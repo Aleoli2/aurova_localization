@@ -21,11 +21,19 @@
 // of the scripts. ROS topics can be easly add by using those scripts. Please
 // refer to the IRI wiki page for more information:
 // http://wikiri.upc.es/index.php/Robotics_Lab
+/**
+ * \file ekf_fusion_alg.h
+ *
+ *  Created on: 21 Nov 2018
+ *      Author: m.a.munoz
+ */
 
 #ifndef _ekf_fusion_alg_h_
 #define _ekf_fusion_alg_h_
 
 #include <ekf_fusion/EkfFusionConfig.h>
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include "nav_msgs/Odometry.h"
 
 //include ekf_fusion_alg main library
 
