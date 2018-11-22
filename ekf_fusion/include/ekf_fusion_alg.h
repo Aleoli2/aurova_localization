@@ -32,6 +32,7 @@
 #define _ekf_fusion_alg_h_
 
 #include <ekf_fusion/EkfFusionConfig.h>
+#include <tf/transform_broadcaster.h>
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "nav_msgs/Odometry.h"
 #include "ekf.h"

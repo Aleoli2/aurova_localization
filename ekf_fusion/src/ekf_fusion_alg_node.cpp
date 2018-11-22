@@ -3,8 +3,19 @@
 EkfFusionAlgNode::EkfFusionAlgNode(void) :
     algorithm_base::IriBaseAlgorithm<EkfFusionAlgorithm>()
 {
+
   //init class attributes if necessary
-  this->loop_rate_ = 10; //in [Hz]
+  this->kalman_config_.x_ini = 100.0;
+  this->kalman_config_.y_ini = 100.0;
+  this->kalman_config_.theta_ini = 7.0;
+  this->kalman_config_.v_ini = 10.0;
+  this->kalman_config_.steering_ini = 8.8;
+  this->kalman_config_.v_model = 20.6; // max. acceleration estimation of the robot
+  this->kalman_config_.steering_model = 10.75; // max. steering rate
+  this->kalman_config_.outlier_mahalanobis_threshold = 1000000;
+  this->wheel_base_ = 1.05;
+  this->ekf_ = new CEkf(this->kalman_config_, this->wheel_base_);
+  this->loop_rate_ = 20; //in [Hz]
   this->flagSendPose = false;
 
   // [init publishers]
@@ -35,6 +46,9 @@ EkfFusionAlgNode::~EkfFusionAlgNode(void)
 
 void EkfFusionAlgNode::mainNodeThread(void)
 {
+
+  //ekf_->predict();
+
   // [fill msg structures]
 
   // [fill srv structure and make request to the server]
@@ -53,14 +67,59 @@ void EkfFusionAlgNode::mainNodeThread(void)
 void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& pose_msg)
 {
   this->alg_.lock();
+
+  ekf::SlamObservation obs;
+
+  //get yaw information
+  tf::Quaternion q(pose_msg->pose.pose.orientation.x, pose_msg->pose.pose.orientation.y,
+                   pose_msg->pose.pose.orientation.z, pose_msg->pose.pose.orientation.w);
+  tf::Matrix3x3 m(q);
+  double roll, pitch, yaw;
+  m.getRPY(roll, pitch, yaw);
+
+  //set observation
+  obs.x = pose_msg->pose.pose.position.x;
+  obs.y = pose_msg->pose.pose.position.y;
+  obs.theta = yaw;
+  obs.sigma_x = 1.0; //pose_msg->pose.covariance[0];
+  obs.sigma_y = 1.0; //pose_msg->pose.covariance[6];
+  obs.sigma_theta = 0.175; //pose_msg->pose.covariance[35];
+
+  this->ekf_->update(obs);
+
   this->alg_.unlock();
 }
 
 void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom_msg)
 {
   this->alg_.lock();
-  this->pose_filtered_.pose.pose.position = odom_msg->pose.pose.position;
+
+  ekf::GnssObservation obs;
+
+  //set observation
+  obs.x = odom_msg->pose.pose.position.x;
+  obs.y = odom_msg->pose.pose.position.y;
+  obs.sigma_x = odom_msg->pose.covariance[0];
+  obs.sigma_y = odom_msg->pose.covariance[6];
+
+  //this->ekf_->update(obs);
+
+  Eigen::Matrix<float, 5, 1> state;
+  Eigen::Matrix<float, 5, 5> covariance;
+
+  this->ekf_->getStateAndCovariance(state, covariance);
+
+  //update ros message structure
+  this->pose_filtered_.header.frame_id = "/map"; //load from parameter
+  tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
+  this->pose_filtered_.pose.pose.position.x = state(0);
+  this->pose_filtered_.pose.pose.position.y = state(1);
+  this->pose_filtered_.pose.pose.orientation.x = quaternion[0];
+  this->pose_filtered_.pose.pose.orientation.y = quaternion[1];
+  this->pose_filtered_.pose.pose.orientation.z = quaternion[2];
+  this->pose_filtered_.pose.pose.orientation.w = quaternion[3];
   this->flagSendPose = true;
+
   this->alg_.unlock();
 }
 

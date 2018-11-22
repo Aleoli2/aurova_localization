@@ -46,6 +46,8 @@ struct KalmanConfiguration
 };
 }
 
+class CEkf;
+typedef CEkf* CEkfPtr;
 
 class CEkf
 {
@@ -58,12 +60,13 @@ private:
 
   ekf::KalmanConfiguration config_;
 
-  float t_last_;
+  double t_last_;
   float dt_;
   float wheelbase_;
 
   bool flag_ekf_initialised_;
   bool debug_;
+  bool debug2_;
 
   void calculateStateJacobian(float dt);
 

@@ -6,7 +6,8 @@ CEkf::CEkf(ekf::KalmanConfiguration kalman_configuration, float wheelbase)
   wheelbase_ = wheelbase;
 
   flag_ekf_initialised_ = false;
-  debug_ = false;
+  debug_ = true;
+  debug2_ = true;
 
   //State vector
   X_(0, 0) = 0.0;
@@ -124,8 +125,9 @@ void CEkf::predict(void)
 {
   if (flag_ekf_initialised_)
   {
-    float t_now = (float)ros::Time::now().toSec();
-    dt_ = t_now - t_last_;
+    double t_now = (double)ros::Time::now().toSec();
+    dt_ = (float)(t_now - t_last_);
+    Eigen::Matrix<float, 2, 2> Q_escale = Q_ * dt_;
 
     // State prediction
     // x coordinate
@@ -143,10 +145,16 @@ void CEkf::predict(void)
 
     // Covariance prediction
     calculateStateJacobian(dt_); // update the F_X_
-    P_ = F_X_ * P_ * F_X_.transpose() + F_q_ * Q_ * F_q_.transpose();
+    P_ = F_X_ * P_ * F_X_.transpose() + F_q_ * Q_escale * F_q_.transpose();
 
     // Preparing for the next filter iteration
-    t_last_ = (float)ros::Time::now().toSec();
+    t_last_ = (double)ros::Time::now().toSec();
+
+    if (debug_)
+    {
+      std::cout << "CEkf::Update Q_: " << Q_escale << std::endl;
+      std::cout << "Delta t = " << dt_ << std::endl;
+    }
 
   }
 
@@ -160,8 +168,8 @@ float CEkf::update(ekf::ClearObservation obs)
 
   if (flag_ekf_initialised_)
   {
-    float t_now = (float)ros::Time::now().toSec();
-    dt_ = t_now - t_last_;
+    double t_now = (double)ros::Time::now().toSec();
+    dt_ = (float)(t_now - t_last_);
 
     //Filling the observation vector
     Eigen::Matrix<float, 2, 1> y;
@@ -239,7 +247,7 @@ float CEkf::update(ekf::ClearObservation obs)
     }
 
     // Preparing for the next filter iteration
-    t_last_ = (float)ros::Time::now().toSec();
+    t_last_ = (double)ros::Time::now().toSec();
   }
   return (likelihood);
 }
@@ -252,8 +260,8 @@ float CEkf::update(ekf::GnssObservation obs)
 
   if (flag_ekf_initialised_)
   {
-    float t_now = (float)ros::Time::now().toSec();
-    dt_ = t_now - t_last_;
+    double t_now = (double)ros::Time::now().toSec();
+    dt_ = (float)(t_now - t_last_);
 
     //Filling the observation vector
     Eigen::Matrix<float, 2, 1> y;
@@ -331,7 +339,7 @@ float CEkf::update(ekf::GnssObservation obs)
     }
 
     // Preparing for the next filter iteration
-    t_last_ = (float)ros::Time::now().toSec();
+    t_last_ = (double)ros::Time::now().toSec();
   }
   return (likelihood);
 }
@@ -344,8 +352,8 @@ float CEkf::update(ekf::ImuObservation obs)
 
   if (flag_ekf_initialised_)
   {
-    float t_now = (float)ros::Time::now().toSec();
-    dt_ = t_now - t_last_;
+    double t_now = (double)ros::Time::now().toSec();
+    dt_ = (float)(t_now - t_last_);
 
     //Filling the observation vector
     float y;
@@ -419,7 +427,7 @@ float CEkf::update(ekf::ImuObservation obs)
     }
 
     // Preparing for the next filter iteration
-    t_last_ = (float)ros::Time::now().toSec();
+    t_last_ = (double)ros::Time::now().toSec();
   }
   return (likelihood);
 }
@@ -446,8 +454,8 @@ float CEkf::update(ekf::SlamObservation obs)
     y(1) = obs.y;
     y(2) = obs.theta;
 
-    float t_now = (float)ros::Time::now().toSec();
-    dt_ = t_now - t_last_;
+    double t_now = (double)ros::Time::now().toSec();
+    dt_ = (float)(t_now - t_last_);
 
     calculateStateJacobian(dt_);
 
@@ -521,7 +529,7 @@ float CEkf::update(ekf::SlamObservation obs)
     }
   }
   // Preparing for the next filter iteration
-  float t_last = (float)ros::Time::now().toSec();
+  t_last_ = (double)ros::Time::now().toSec();
   return (likelihood);
 }
 
