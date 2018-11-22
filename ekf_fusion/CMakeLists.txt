@@ -15,6 +15,7 @@ find_package(catkin REQUIRED COMPONENTS iri_base_algorithm)
 #           Add system and labrobotica dependencies here
 # ******************************************************************** 
 # find_package(<dependency> REQUIRED)
+find_package(PCL REQUIRED)
 
 # ******************************************************************** 
 #           Add topic, service and action definition here
@@ -76,18 +77,20 @@ catkin_package(
 # ******************************************************************** 
 include_directories(include)
 include_directories(${catkin_INCLUDE_DIRS})
+include_directories(${PCL_INCLUDE_DIRS})
 # include_directories(${<dependency>_INCLUDE_DIR})
 
 ## Declare a cpp library
 # add_library(${PROJECT_NAME} <list of source files>)
 
 ## Declare a cpp executable
-add_executable(${PROJECT_NAME} src/ekf_fusion_alg.cpp src/ekf_fusion_alg_node.cpp)
+add_executable(${PROJECT_NAME} src/ekf_fusion_alg.cpp src/ekf_fusion_alg_node.cpp src/ekf.cpp)
 
 # ******************************************************************** 
 #                   Add the libraries
 # ******************************************************************** 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} ${PCL_LIBRARIES})
 # target_link_libraries(${PROJECT_NAME} ${<dependency>_LIBRARY})
 
 # ******************************************************************** 
