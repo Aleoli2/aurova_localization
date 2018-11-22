@@ -16,6 +16,8 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
   this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry/gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg,
                                                             this);
   this->odom_raw_sub_ = this->public_node_handle_.subscribe("/odometry", 1, &EkfFusionAlgNode::cb_getRawOdomMsg, this);
+  this->estimated_ackermann_sub_ = this->public_node_handle_.subscribe("/estimated_ackermann_state", 1,
+                                                                       &EkfFusionAlgNode::cb_ackermannState, this);
 
   // [init services]
 
@@ -66,6 +68,13 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
 {
   this->alg_.lock();
   this->pose_filtered_.pose.pose.orientation = odom_msg->pose.pose.orientation;
+  this->alg_.unlock();
+}
+
+void EkfFusionAlgNode::cb_ackermannState(
+    const ackermann_msgs::AckermannDriveStamped::ConstPtr& estimated_ackermann_state_msg)
+{
+  this->alg_.lock();
   this->alg_.unlock();
 }
 

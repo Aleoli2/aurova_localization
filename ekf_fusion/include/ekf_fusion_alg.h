@@ -34,6 +34,7 @@
 #include <ekf_fusion/EkfFusionConfig.h>
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "nav_msgs/Odometry.h"
+#include "ackermann_msgs/AckermannDriveStamped.h"
 
 //include ekf_fusion_alg main library
 
