@@ -96,8 +96,8 @@ void CEkf::calculateStateJacobian(float dt)
   F_X_(2, 0) = 0.0;
   F_X_(2, 1) = 0.0;
   F_X_(2, 2) = 1.0;
-  F_X_(2, 3) = (tan(X_(4)) / wheelbase_) * dt;
   assert(fabs(X_(4) - M_PI / 2.0) > 0.01 && "ERROR in CEkf::calculateStateJacobian, steering == pi/2.0");
+  F_X_(2, 3) = (tan(X_(4)) / wheelbase_) * dt;
   F_X_(2, 4) = (X_(3) * dt) / (wheelbase_ * cos(X_(4)) * cos(X_(4)));
 
   //f(v)
@@ -123,40 +123,58 @@ void CEkf::calculateStateJacobian(float dt)
 
 void CEkf::predict(void)
 {
+  static bool first_exec = true;
+  static double t_last = 0.0;
+  float dt = 0.0;
+
   if (flag_ekf_initialised_)
   {
     double t_now = (double)ros::Time::now().toSec();
-    dt_ = (float)(t_now - t_last_);
-    Eigen::Matrix<float, 2, 2> Q_escale = Q_ * dt_;
+    dt = (float)(t_now - t_last);
 
-    // State prediction
-    // x coordinate
-    X_(0) = X_(0) + X_(3) * dt_ * cos(X_(2));
-
-    // y coordinate
-    X_(1) = X_(1) + X_(3) * dt_ * sin(X_(2));
-
-    //theta (robot orientation)
-    assert(fabs(X_(4) - M_PI / 2.0) > 0.01 && "ERROR in CEkf::predict, steering == pi/2.0");
-    X_(2) = X_(2) + (tan(X_(4)) / wheelbase_) * X_(3) * dt_;
-
-    //velocity (assumed constant plus zero mean perturbation noise) X_(3) = X_(3) + 0.0;
-    //steering (assumed constant plus zero mean perturbation noise) X_(4) = X_(4) + 0.0;
-
-    // Covariance prediction
-    calculateStateJacobian(dt_); // update the F_X_
-    P_ = F_X_ * P_ * F_X_.transpose() + F_q_ * Q_escale * F_q_.transpose();
-
-    // Preparing for the next filter iteration
-    t_last_ = (double)ros::Time::now().toSec();
-
-    if (debug_)
+    if (!first_exec && dt > 0.0)
     {
-      std::cout << "CEkf::Update Q_: " << Q_escale << std::endl;
-      std::cout << "Delta t = " << dt_ << std::endl;
-    }
+      if (debug_)
+      {
+        std::cout << "t_last = " << t_last << std::endl;
+        std::cout << "t_now = " << t_now << std::endl;
+        std::cout << "Delta t = " << dt << std::endl;
+      }
 
+      assert(dt > 0.001 && dt < 5.0 && "Error in CEkf::predict: invalid dt");
+
+      Eigen::Matrix<float, 2, 2> Q_escale = Q_ * dt;
+
+      // State prediction
+      // x coordinate
+      X_(0) = X_(0) + X_(3) * dt * cos(X_(2));
+
+      // y coordinate
+      X_(1) = X_(1) + X_(3) * dt * sin(X_(2));
+
+      //theta (robot orientation)
+      assert(fabs(X_(4) - M_PI / 2.0) > 0.01 && "ERROR in CEkf::predict, steering == pi/2.0");
+      X_(2) = X_(2) + (tan(X_(4)) / wheelbase_) * X_(3) * dt;
+
+      //velocity (assumed constant plus zero mean perturbation noise) X_(3) = X_(3) + 0.0;
+      //steering (assumed constant plus zero mean perturbation noise) X_(4) = X_(4) + 0.0;
+
+      // Covariance prediction
+      calculateStateJacobian(dt); // update the F_X_
+      P_ = F_X_ * P_ * F_X_.transpose() + F_q_ * Q_escale * F_q_.transpose();
+
+      if (debug_)
+      {
+        std::cout << "CEkf::Update X_: " << X_ << std::endl;
+        std::cout << "CEkf::Update P_: " << P_ << std::endl;
+        std::cout << "CEkf::Update Q_: " << Q_escale << std::endl;
+      }
+    }
+    first_exec = false;
   }
+
+  // Preparing for the next filter iteration
+  t_last = (double)ros::Time::now().toSec();
 
 }
 
@@ -168,24 +186,10 @@ float CEkf::update(ekf::ClearObservation obs)
 
   if (flag_ekf_initialised_)
   {
-    double t_now = (double)ros::Time::now().toSec();
-    dt_ = (float)(t_now - t_last_);
-
     //Filling the observation vector
     Eigen::Matrix<float, 2, 1> y;
     y(0) = obs.v;
     y(1) = obs.steering;
-
-    calculateStateJacobian(dt_);
-
-    if (debug_)
-    {
-      std::cout << "CEkf::Update X: " << X_.transpose() << std::endl;
-      std::cout << "CEkf::Update P_: " << P_ << std::endl;
-      std::cout << "CEkf::Update Q_: " << Q_ << std::endl;
-      std::cout << "CEkf::Update F_X_: " << F_X_ << std::endl;
-      std::cout << "CEkf::Update F_q_: " << F_q_ << std::endl;
-    }
 
     // Expectation
     Eigen::Vector2f e, z; // expectation, innovation
@@ -240,14 +244,14 @@ float CEkf::update(ekf::ClearObservation obs)
         std::cout << "CEkf::Update X_: " << X_ << std::endl;
 
       // State covariance correction
-      P_ = P_ - K * Z * K.transpose();
+      //P_ = P_ - K * Z * K.transpose();
+      // State covariance correction (Joseph form)
+      Eigen::Matrix<float, 5, 5> I = Eigen::Matrix<float, 5, 5>::Identity();
+      P_ = (I - K * H) * P_;
 
       if (debug_)
         std::cout << "CEkf::Update P_: " << P_ << std::endl;
     }
-
-    // Preparing for the next filter iteration
-    t_last_ = (double)ros::Time::now().toSec();
   }
   return (likelihood);
 }
@@ -260,24 +264,10 @@ float CEkf::update(ekf::GnssObservation obs)
 
   if (flag_ekf_initialised_)
   {
-    double t_now = (double)ros::Time::now().toSec();
-    dt_ = (float)(t_now - t_last_);
-
     //Filling the observation vector
     Eigen::Matrix<float, 2, 1> y;
     y(0) = obs.x;
     y(1) = obs.y;
-
-    calculateStateJacobian(dt_);
-
-    if (debug_)
-    {
-      std::cout << "CEkf::Update X_: " << X_.transpose() << std::endl;
-      std::cout << "CEkf::Update P_: " << P_ << std::endl;
-      std::cout << "CEkf::Update Q_: " << Q_ << std::endl;
-      std::cout << "CEkf::Update F_X_: " << F_X_ << std::endl;
-      std::cout << "CEkf::Update F_q_: " << F_q_ << std::endl;
-    }
 
     // Expectation
     Eigen::Vector2f e, z; // expectation, innovation
@@ -332,14 +322,14 @@ float CEkf::update(ekf::GnssObservation obs)
         std::cout << "CEkf::Update X_: " << X_ << std::endl;
 
       // State covariance correction
-      P_ = P_ - K * Z * K.transpose();
+      //P_ = P_ - K * Z * K.transpose();
+      // State covariance correction (Joseph form)
+      Eigen::Matrix<float, 5, 5> I = Eigen::Matrix<float, 5, 5>::Identity();
+      P_ = (I - K * H) * P_;
 
       if (debug_)
         std::cout << "CEkf::Update P_: " << P_ << std::endl;
     }
-
-    // Preparing for the next filter iteration
-    t_last_ = (double)ros::Time::now().toSec();
   }
   return (likelihood);
 }
@@ -352,23 +342,9 @@ float CEkf::update(ekf::ImuObservation obs)
 
   if (flag_ekf_initialised_)
   {
-    double t_now = (double)ros::Time::now().toSec();
-    dt_ = (float)(t_now - t_last_);
-
     //Filling the observation vector
     float y;
     y = obs.theta;
-
-    calculateStateJacobian(dt_);
-
-    if (debug_)
-    {
-      std::cout << "CEkf::Update X_: " << X_.transpose() << std::endl;
-      std::cout << "CEkf::Update P_: " << P_ << std::endl;
-      std::cout << "CEkf::Update Q_: " << Q_ << std::endl;
-      std::cout << "CEkf::Update F_X_: " << F_X_ << std::endl;
-      std::cout << "CEkf::Update F_q_: " << F_q_ << std::endl;
-    }
 
     // Expectation
     float e, z; // expectation, innovation
@@ -420,14 +396,14 @@ float CEkf::update(ekf::ImuObservation obs)
         std::cout << "CEkf::Update X_: " << X_ << std::endl;
 
       // State covariance correction
-      P_ = P_ - K * Z * K.transpose();
+      //P_ = P_ - K * Z * K.transpose();
+      // State covariance correction (Joseph form)
+      Eigen::Matrix<float, 5, 5> I = Eigen::Matrix<float, 5, 5>::Identity();
+      P_ = (I - K * H) * P_;
 
       if (debug_)
         std::cout << "CEkf::Update P_: " << P_ << std::endl;
     }
-
-    // Preparing for the next filter iteration
-    t_last_ = (double)ros::Time::now().toSec();
   }
   return (likelihood);
 }
@@ -453,20 +429,6 @@ float CEkf::update(ekf::SlamObservation obs)
     y(0) = obs.x;
     y(1) = obs.y;
     y(2) = obs.theta;
-
-    double t_now = (double)ros::Time::now().toSec();
-    dt_ = (float)(t_now - t_last_);
-
-    calculateStateJacobian(dt_);
-
-    if (debug_)
-    {
-      std::cout << "CEkf::Update X_: " << X_.transpose() << std::endl;
-      std::cout << "CEkf::Update P_: " << P_ << std::endl;
-      std::cout << "CEkf::Update Q_: " << Q_ << std::endl;
-      std::cout << "CEkf::Update F_X_: " << F_X_ << std::endl;
-      std::cout << "CEkf::Update F_q_: " << F_q_ << std::endl;
-    }
 
     // Expectation
     Eigen::Vector3f e, z; // expectation, innovation
@@ -504,7 +466,11 @@ float CEkf::update(ekf::SlamObservation obs)
     likelihood = exp(-0.5 * mahalanobis_distance) / sqrt(Z.determinant());
 
     if (debug_)
+    {
+      std::cout << "CEkf::Update z: " << z << std::endl;
+      std::cout << "CEkf::Update Z: " << Z << std::endl;
       std::cout << "CEkf::Update mahalanobis_distance: " << mahalanobis_distance << std::endl;
+    }
 
     if (mahalanobis_distance < config_.outlier_mahalanobis_threshold)
     {
@@ -522,14 +488,15 @@ float CEkf::update(ekf::SlamObservation obs)
         std::cout << "CEkf::Update X_: " << X_ << std::endl;
 
       // State covariance correction
-      P_ = P_ - K * Z * K.transpose();
+      //P_ = P_ - K * Z * K.transpose();
+      // State covariance correction (Joseph form)
+      Eigen::Matrix<float, 5, 5> I = Eigen::Matrix<float, 5, 5>::Identity();
+      P_ = (I - K * H) * P_;
 
       if (debug_)
         std::cout << "CEkf::Update P_: " << P_ << std::endl;
     }
   }
-  // Preparing for the next filter iteration
-  t_last_ = (double)ros::Time::now().toSec();
   return (likelihood);
 }
 

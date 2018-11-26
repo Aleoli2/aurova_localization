@@ -60,8 +60,6 @@ private:
 
   ekf::KalmanConfiguration config_;
 
-  double t_last_;
-  float dt_;
   float wheelbase_;
 
   bool flag_ekf_initialised_;
