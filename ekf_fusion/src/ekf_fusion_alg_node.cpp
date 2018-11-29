@@ -70,8 +70,8 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
 
   ekf::SlamObservation obs;
 
-  float min_std_x = 0.1, min_std_y = 0.1, min_std_theta = 0.017 * 2; /// GET FROM PARAMETER !!!!
-  float var_max = 9, var_max_theta = 0.017 * 5 * 0.017 * 5; /// GET FROM PARAMETER !!!!
+  double min_std_x = 0.1, min_std_y = 0.1, min_std_theta = 0.017 * 2; /// GET FROM PARAMETER !!!!
+  double var_max = 2 * 2, var_max_theta = 0.017 * 10 * 0.017 * 10; /// GET FROM PARAMETER !!!!
 
   //get yaw information
   tf::Quaternion q(pose_msg->pose.pose.orientation.x, pose_msg->pose.pose.orientation.y,
@@ -110,8 +110,8 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
 
   if (obs.sigma_x > var_max || obs.sigma_x > var_max || obs.sigma_theta > var_max_theta)
   {
-    Eigen::Matrix<float, 5, 1> state;
-    Eigen::Matrix<float, 5, 5> covariance;
+    Eigen::Matrix<double, 5, 1> state;
+    Eigen::Matrix<double, 5, 5> covariance;
 
     this->ekf_->getStateAndCovariance(state, covariance);
 
@@ -135,6 +135,7 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->pose_filtered_.pose.covariance[35] = covariance(2, 2);
     this->flagSendPose = true;
   }
+  this->flagSendPose = false;
 
   this->alg_.unlock();
 }
@@ -144,7 +145,7 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   this->alg_.lock();
 
   ekf::GnssObservation obs;
-  float min_std_x = 0.1, min_std_y = 0.1; /// GET FROM PARAMETER !!!!
+  double min_std_x = 0.1, min_std_y = 0.1; /// GET FROM PARAMETER !!!!
 
   //set observation
   obs.x = odom_msg->pose.pose.position.x;

@@ -10,39 +10,39 @@ namespace ekf
 {
 struct ClearObservation
 {
-  float v,steering;
-  float sigma_v, sigma_steering;
+  double v,steering;
+  double sigma_v, sigma_steering;
 };
 
 struct GnssObservation
 {
-  float x,y;
-  float sigma_x, sigma_y;
+  double x,y;
+  double sigma_x, sigma_y;
 };
 
 struct ImuObservation
 {
-  float theta;
-  float sigma_theta;
+  double theta;
+  double sigma_theta;
 };
 
 struct OdomObservation
 {
-  float x,y,theta;
-  float sigma_x, sigma_y, sigma_theta;
+  double x,y,theta;
+  double sigma_x, sigma_y, sigma_theta;
 };
 
 struct SlamObservation
 {
-  float x,y,theta;
-  float sigma_x, sigma_y, sigma_theta;
+  double x,y,theta;
+  double sigma_x, sigma_y, sigma_theta;
 };
 
 struct KalmanConfiguration
 {
-  float x_ini, y_ini, theta_ini, v_ini, steering_ini;
-  float v_model, steering_model;
-  float outlier_mahalanobis_threshold;
+  double x_ini, y_ini, theta_ini, v_ini, steering_ini;
+  double v_model, steering_model;
+  double outlier_mahalanobis_threshold;
 };
 }
 
@@ -52,39 +52,39 @@ typedef CEkf* CEkfPtr;
 class CEkf
 {
 private:
-  Eigen::Matrix<float, 5, 1> X_;
-  Eigen::Matrix<float, 5, 5> F_X_;
-  Eigen::Matrix<float, 5, 2> F_q_;
-  Eigen::Matrix<float, 2, 2> Q_;
-  Eigen::Matrix<float, 5, 5> P_;
+  Eigen::Matrix<double, 5, 1> X_;
+  Eigen::Matrix<double, 5, 5> F_X_;
+  Eigen::Matrix<double, 5, 2> F_q_;
+  Eigen::Matrix<double, 2, 2> Q_;
+  Eigen::Matrix<double, 5, 5> P_;
 
   ekf::KalmanConfiguration config_;
 
-  float wheelbase_;
+  double wheelbase_;
 
   bool flag_ekf_initialised_;
   bool debug_;
   bool debug2_;
 
-  void calculateStateJacobian(float dt);
+  void calculateStateJacobian(double dt);
 
 public:
 
-  CEkf(ekf::KalmanConfiguration kalman_configuration, float wheelbase);
+  CEkf(ekf::KalmanConfiguration kalman_configuration, double wheelbase);
 
   ~CEkf(void);
 
   void predict(void);
 
-  float update(ekf::ClearObservation obs);
+  double update(ekf::ClearObservation obs);
 
-  float update(ekf::GnssObservation obs);
+  double update(ekf::GnssObservation obs);
 
-  float update(ekf::ImuObservation obs);
+  double update(ekf::ImuObservation obs);
 
-  float update(ekf::SlamObservation obs);
+  double update(ekf::SlamObservation obs);
 
-  void getStateAndCovariance(Eigen::Matrix<float, 5, 1>& state, Eigen::Matrix<float, 5, 5>& covariance);
+  void getStateAndCovariance(Eigen::Matrix<double, 5, 1>& state, Eigen::Matrix<double, 5, 5>& covariance);
 
   void setDebug(bool debug)
   {

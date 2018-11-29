@@ -48,7 +48,7 @@ class EkfFusionAlgNode : public algorithm_base::IriBaseAlgorithm<EkfFusionAlgori
 {
 private:
 
-  float wheel_base_;
+  double wheel_base_;
   ekf::KalmanConfiguration kalman_config_;
   CEkfPtr ekf_;
   bool flagSendPose;

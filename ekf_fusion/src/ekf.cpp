@@ -1,6 +1,6 @@
 #include "ekf.h"
 
-CEkf::CEkf(ekf::KalmanConfiguration kalman_configuration, float wheelbase)
+CEkf::CEkf(ekf::KalmanConfiguration kalman_configuration, double wheelbase)
 {
   config_ = kalman_configuration;
   wheelbase_ = wheelbase;
@@ -76,7 +76,7 @@ CEkf::~CEkf(void)
 
 }
 
-void CEkf::calculateStateJacobian(float dt)
+void CEkf::calculateStateJacobian(double dt)
 {
   //f(x)
   F_X_(0, 0) = 1.0;
@@ -125,12 +125,12 @@ void CEkf::predict(void)
 {
   static bool first_exec = true;
   static double t_last = 0.0;
-  float dt = 0.0;
+  double dt = 0.0;
 
   if (flag_ekf_initialised_)
   {
     double t_now = (double)ros::Time::now().toSec();
-    dt = (float)(t_now - t_last);
+    dt = (t_now - t_last);
 
     if (!first_exec && dt > 0.0)
     {
@@ -143,7 +143,7 @@ void CEkf::predict(void)
 
       assert(dt > 0.001 && dt < 5.0 && "Error in CEkf::predict: invalid dt");
 
-      Eigen::Matrix<float, 2, 2> Q_escale = Q_ * dt;
+      Eigen::Matrix<double, 2, 2> Q_escale = Q_ * dt;
 
       // State prediction
       // x coordinate
@@ -162,13 +162,6 @@ void CEkf::predict(void)
       // Covariance prediction
       calculateStateJacobian(dt); // update the F_X_
       P_ = F_X_ * P_ * F_X_.transpose() + F_q_ * Q_escale * F_q_.transpose();
-
-      if (debug_)
-      {
-        std::cout << "CEkf::Update X_: " << X_ << std::endl;
-        std::cout << "CEkf::Update P_: " << P_ << std::endl;
-        std::cout << "CEkf::Update Q_: " << Q_escale << std::endl;
-      }
     }
     first_exec = false;
   }
@@ -178,25 +171,25 @@ void CEkf::predict(void)
 
 }
 
-float CEkf::update(ekf::ClearObservation obs)
+double CEkf::update(ekf::ClearObservation obs)
 {
-  const float INVALID_DISTANCE = -1.0;
-  float mahalanobis_distance = INVALID_DISTANCE;
-  float likelihood = INVALID_DISTANCE;
+  const double INVALID_DISTANCE = -1.0;
+  double mahalanobis_distance = INVALID_DISTANCE;
+  double likelihood = INVALID_DISTANCE;
 
   if (flag_ekf_initialised_)
   {
     //Filling the observation vector
-    Eigen::Matrix<float, 2, 1> y;
+    Eigen::Matrix<double, 2, 1> y;
     y(0) = obs.v;
     y(1) = obs.steering;
 
     // Expectation
-    Eigen::Vector2f e, z; // expectation, innovation
+    Eigen::Matrix<double, 2, 1> e, z; // expectation, innovation
     e(0) = X_(3);
     e(1) = X_(4);
 
-    Eigen::Matrix<float, 2, 5> H = Eigen::Matrix<float, 2, 5>::Zero();
+    Eigen::Matrix<double, 2, 5> H = Eigen::Matrix<double, 2, 5>::Zero();
     // Jacobian of the observation function
     H.block<2, 3>(0, 0).setZero();
     H.block<2, 2>(0, 3).setIdentity();
@@ -209,12 +202,12 @@ float CEkf::update(ekf::ClearObservation obs)
 
     // Innovation covariance
 
-    Eigen::Matrix<float, 2, 2> R = Eigen::Matrix<float, 2, 2>::Zero();
+    Eigen::Matrix<double, 2, 2> R = Eigen::Matrix<double, 2, 2>::Zero();
 
     R(0, 0) = obs.sigma_v;
     R(1, 1) = obs.sigma_steering;
 
-    Eigen::Matrix<float, 2, 2> Z = Eigen::Matrix<float, 2, 2>::Zero();
+    Eigen::Matrix<double, 2, 2> Z = Eigen::Matrix<double, 2, 2>::Zero();
 
     Z = H * P_ * H.transpose() + R;
 
@@ -231,7 +224,7 @@ float CEkf::update(ekf::ClearObservation obs)
     if (mahalanobis_distance < config_.outlier_mahalanobis_threshold)
     {
       // Kalman gain
-      Eigen::Matrix<float, 5, 2> K = Eigen::Matrix<float, 5, 2>::Zero();
+      Eigen::Matrix<double, 5, 2> K = Eigen::Matrix<double, 5, 2>::Zero();
       K = P_ * H.transpose() * Z.inverse();
 
       if (debug_)
@@ -246,7 +239,7 @@ float CEkf::update(ekf::ClearObservation obs)
       // State covariance correction
       //P_ = P_ - K * Z * K.transpose();
       // State covariance correction (Joseph form)
-      Eigen::Matrix<float, 5, 5> I = Eigen::Matrix<float, 5, 5>::Identity();
+      Eigen::Matrix<double, 5, 5> I = Eigen::Matrix<double, 5, 5>::Identity();
       P_ = (I - K * H) * P_;
 
       if (debug_)
@@ -256,25 +249,25 @@ float CEkf::update(ekf::ClearObservation obs)
   return (likelihood);
 }
 
-float CEkf::update(ekf::GnssObservation obs)
+double CEkf::update(ekf::GnssObservation obs)
 {
-  const float INVALID_DISTANCE = -1.0;
-  float mahalanobis_distance = INVALID_DISTANCE;
-  float likelihood = INVALID_DISTANCE;
+  const double INVALID_DISTANCE = -1.0;
+  double mahalanobis_distance = INVALID_DISTANCE;
+  double likelihood = INVALID_DISTANCE;
 
   if (flag_ekf_initialised_)
   {
     //Filling the observation vector
-    Eigen::Matrix<float, 2, 1> y;
+    Eigen::Matrix<double, 2, 1> y;
     y(0) = obs.x;
     y(1) = obs.y;
 
     // Expectation
-    Eigen::Vector2f e, z; // expectation, innovation
+    Eigen::Matrix<double, 2, 1> e, z; // expectation, innovation
     e(0) = X_(0);
     e(1) = X_(1);
 
-    Eigen::Matrix<float, 2, 5> H = Eigen::Matrix<float, 2, 5>::Zero();
+    Eigen::Matrix<double, 2, 5> H = Eigen::Matrix<double, 2, 5>::Zero();
     // Jacobian of the observation function
     H.block<2, 2>(0, 0).setIdentity();
     H.block<2, 3>(0, 2).setZero();
@@ -287,12 +280,12 @@ float CEkf::update(ekf::GnssObservation obs)
 
     // Innovation covariance
 
-    Eigen::Matrix<float, 2, 2> R = Eigen::Matrix<float, 2, 2>::Zero();
+    Eigen::Matrix<double, 2, 2> R = Eigen::Matrix<double, 2, 2>::Zero();
 
     R(0, 0) = obs.sigma_x;
     R(1, 1) = obs.sigma_y;
 
-    Eigen::Matrix<float, 2, 2> Z = Eigen::Matrix<float, 2, 2>::Zero();
+    Eigen::Matrix<double, 2, 2> Z = Eigen::Matrix<double, 2, 2>::Zero();
 
     Z = H * P_ * H.transpose() + R;
 
@@ -309,7 +302,7 @@ float CEkf::update(ekf::GnssObservation obs)
     if (mahalanobis_distance < config_.outlier_mahalanobis_threshold)
     {
       // Kalman gain
-      Eigen::Matrix<float, 5, 2> K = Eigen::Matrix<float, 5, 2>::Zero();
+      Eigen::Matrix<double, 5, 2> K = Eigen::Matrix<double, 5, 2>::Zero();
       K = P_ * H.transpose() * Z.inverse();
 
       if (debug_)
@@ -324,7 +317,7 @@ float CEkf::update(ekf::GnssObservation obs)
       // State covariance correction
       //P_ = P_ - K * Z * K.transpose();
       // State covariance correction (Joseph form)
-      Eigen::Matrix<float, 5, 5> I = Eigen::Matrix<float, 5, 5>::Identity();
+      Eigen::Matrix<double, 5, 5> I = Eigen::Matrix<double, 5, 5>::Identity();
       P_ = (I - K * H) * P_;
 
       if (debug_)
@@ -334,23 +327,23 @@ float CEkf::update(ekf::GnssObservation obs)
   return (likelihood);
 }
 
-float CEkf::update(ekf::ImuObservation obs)
+double CEkf::update(ekf::ImuObservation obs)
 {
-  const float INVALID_DISTANCE = -1.0;
-  float mahalanobis_distance = INVALID_DISTANCE;
-  float likelihood = INVALID_DISTANCE;
+  const double INVALID_DISTANCE = -1.0;
+  double mahalanobis_distance = INVALID_DISTANCE;
+  double likelihood = INVALID_DISTANCE;
 
   if (flag_ekf_initialised_)
   {
     //Filling the observation vector
-    float y;
+    double y;
     y = obs.theta;
 
     // Expectation
-    float e, z; // expectation, innovation
+    double e, z; // expectation, innovation
     e = X_(2);
 
-    Eigen::Matrix<float, 1, 5> H = Eigen::Matrix<float, 1, 5>::Zero();
+    Eigen::Matrix<double, 1, 5> H = Eigen::Matrix<double, 1, 5>::Zero();
     // Jacobian of the observation function
     H(0, 2) = 1;
 
@@ -362,11 +355,11 @@ float CEkf::update(ekf::ImuObservation obs)
 
     // Innovation covariance
 
-    float R;
+    double R;
 
     R = obs.sigma_theta;
 
-    float Z;
+    double Z;
 
     Z = H * P_ * H.transpose() + R;
 
@@ -383,7 +376,7 @@ float CEkf::update(ekf::ImuObservation obs)
     if (mahalanobis_distance < config_.outlier_mahalanobis_threshold)
     {
       // Kalman gain
-      Eigen::Matrix<float, 5, 1> K = Eigen::Matrix<float, 5, 1>::Zero();
+      Eigen::Matrix<double, 5, 1> K = Eigen::Matrix<double, 5, 1>::Zero();
       K = P_ * H.transpose() / Z;
 
       if (debug_)
@@ -398,7 +391,7 @@ float CEkf::update(ekf::ImuObservation obs)
       // State covariance correction
       //P_ = P_ - K * Z * K.transpose();
       // State covariance correction (Joseph form)
-      Eigen::Matrix<float, 5, 5> I = Eigen::Matrix<float, 5, 5>::Identity();
+      Eigen::Matrix<double, 5, 5> I = Eigen::Matrix<double, 5, 5>::Identity();
       P_ = (I - K * H) * P_;
 
       if (debug_)
@@ -408,11 +401,11 @@ float CEkf::update(ekf::ImuObservation obs)
   return (likelihood);
 }
 
-float CEkf::update(ekf::SlamObservation obs)
+double CEkf::update(ekf::SlamObservation obs)
 {
-  const float INVALID_DISTANCE = -1.0;
-  float mahalanobis_distance = INVALID_DISTANCE;
-  float likelihood = INVALID_DISTANCE;
+  const double INVALID_DISTANCE = -1.0;
+  double mahalanobis_distance = INVALID_DISTANCE;
+  double likelihood = INVALID_DISTANCE;
 
   if (!flag_ekf_initialised_)
   {
@@ -425,18 +418,18 @@ float CEkf::update(ekf::SlamObservation obs)
   else
   {
     //Filling the observation vector
-    Eigen::Matrix<float, 3, 1> y;
+    Eigen::Matrix<double, 3, 1> y;
     y(0) = obs.x;
     y(1) = obs.y;
     y(2) = obs.theta;
 
     // Expectation
-    Eigen::Vector3f e, z; // expectation, innovation
+    Eigen::Matrix<double, 3, 1> e, z; // expectation, innovation
     e(0) = X_(0);
     e(1) = X_(1);
     e(2) = X_(2);
 
-    Eigen::Matrix<float, 3, 5> H = Eigen::Matrix<float, 3, 5>::Zero();
+    Eigen::Matrix<double, 3, 5> H = Eigen::Matrix<double, 3, 5>::Zero();
     // Jacobian of the observation function
     H.block<3, 3>(0, 0).setIdentity();
     H.block<3, 2>(0, 3).setZero();
@@ -448,13 +441,13 @@ float CEkf::update(ekf::SlamObservation obs)
     z = y - e;
 
     // Innovation covariance
-    Eigen::Matrix<float, 3, 3> R = Eigen::Matrix<float, 3, 3>::Zero();
+    Eigen::Matrix<double, 3, 3> R = Eigen::Matrix<double, 3, 3>::Zero();
 
     R(0, 0) = obs.sigma_x;
     R(1, 1) = obs.sigma_y;
     R(2, 2) = obs.sigma_theta;
 
-    Eigen::Matrix<float, 3, 3> Z = Eigen::Matrix<float, 3, 3>::Zero();
+    Eigen::Matrix<double, 3, 3> Z = Eigen::Matrix<double, 3, 3>::Zero();
 
     Z = H * P_ * H.transpose() + R;
 
@@ -466,16 +459,12 @@ float CEkf::update(ekf::SlamObservation obs)
     likelihood = exp(-0.5 * mahalanobis_distance) / sqrt(Z.determinant());
 
     if (debug_)
-    {
-      std::cout << "CEkf::Update z: " << z << std::endl;
-      std::cout << "CEkf::Update Z: " << Z << std::endl;
       std::cout << "CEkf::Update mahalanobis_distance: " << mahalanobis_distance << std::endl;
-    }
 
     if (mahalanobis_distance < config_.outlier_mahalanobis_threshold)
     {
       // Kalman gain
-      Eigen::Matrix<float, 5, 3> K = Eigen::Matrix<float, 5, 3>::Zero();
+      Eigen::Matrix<double, 5, 3> K = Eigen::Matrix<double, 5, 3>::Zero();
       K = P_ * H.transpose() * Z.inverse();
 
       if (debug_)
@@ -490,7 +479,7 @@ float CEkf::update(ekf::SlamObservation obs)
       // State covariance correction
       //P_ = P_ - K * Z * K.transpose();
       // State covariance correction (Joseph form)
-      Eigen::Matrix<float, 5, 5> I = Eigen::Matrix<float, 5, 5>::Identity();
+      Eigen::Matrix<double, 5, 5> I = Eigen::Matrix<double, 5, 5>::Identity();
       P_ = (I - K * H) * P_;
 
       if (debug_)
@@ -500,7 +489,7 @@ float CEkf::update(ekf::SlamObservation obs)
   return (likelihood);
 }
 
-void CEkf::getStateAndCovariance(Eigen::Matrix<float, 5, 1>& state, Eigen::Matrix<float, 5, 5>& covariance)
+void CEkf::getStateAndCovariance(Eigen::Matrix<double, 5, 1>& state, Eigen::Matrix<double, 5, 5>& covariance)
 {
   state = X_;
   covariance = P_;
