@@ -8,27 +8,16 @@
 
 namespace ekf
 {
-struct ClearObservation
-{
-  double v,steering;
-  double sigma_v, sigma_steering;
-};
 
 struct GnssObservation
 {
-  double x,y;
-  double sigma_x, sigma_y;
+  double x, y, theta;
+  double sigma_x, sigma_y, sigma_theta;
 };
 
-struct ImuObservation
+struct OdomAction
 {
-  double theta;
-  double sigma_theta;
-};
-
-struct OdomObservation
-{
-  double x,y,theta;
+  double delta_x, delta_y, delta_theta;
   double sigma_x, sigma_y, sigma_theta;
 };
 
@@ -40,8 +29,8 @@ struct SlamObservation
 
 struct KalmanConfiguration
 {
-  double x_ini, y_ini, theta_ini, v_ini, steering_ini;
-  double v_model, steering_model;
+  double x_ini, y_ini, theta_ini;
+  double x_model, y_model, theta_model;
   double outlier_mahalanobis_threshold;
 };
 }
@@ -52,11 +41,13 @@ typedef CEkf* CEkfPtr;
 class CEkf
 {
 private:
-  Eigen::Matrix<double, 5, 1> X_;
-  Eigen::Matrix<double, 5, 5> F_X_;
-  Eigen::Matrix<double, 5, 2> F_q_;
-  Eigen::Matrix<double, 2, 2> Q_;
-  Eigen::Matrix<double, 5, 5> P_;
+  Eigen::Matrix<double, 3, 1> X_;
+  Eigen::Matrix<double, 3, 3> F_X_;
+  Eigen::Matrix<double, 3, 3> F_u_;
+  Eigen::Matrix<double, 3, 3> F_q_;
+  Eigen::Matrix<double, 3, 3> Q_;
+  Eigen::Matrix<double, 3, 3> P_;
+  Eigen::Matrix<double, 3, 3> H_;
 
   ekf::KalmanConfiguration config_;
 
@@ -64,27 +55,20 @@ private:
 
   bool flag_ekf_initialised_;
   bool debug_;
-  bool debug2_;
-
-  void calculateStateJacobian(double dt);
 
 public:
 
-  CEkf(ekf::KalmanConfiguration kalman_configuration, double wheelbase);
+  CEkf(ekf::KalmanConfiguration kalman_configuration);
 
   ~CEkf(void);
 
-  void predict(void);
-
-  double update(ekf::ClearObservation obs);
+  void predict(ekf::OdomAction act);
 
   double update(ekf::GnssObservation obs);
 
-  double update(ekf::ImuObservation obs);
-
   double update(ekf::SlamObservation obs);
 
-  void getStateAndCovariance(Eigen::Matrix<double, 5, 1>& state, Eigen::Matrix<double, 5, 5>& covariance);
+  void getStateAndCovariance(Eigen::Matrix<double, 3, 1>& state, Eigen::Matrix<double, 3, 3>& covariance);
 
   void setDebug(bool debug)
   {

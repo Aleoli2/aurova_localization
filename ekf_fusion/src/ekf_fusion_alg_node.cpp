@@ -5,18 +5,17 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
 {
 
   //init class attributes if necessary
-  this->kalman_config_.x_ini = 100.0;
-  this->kalman_config_.y_ini = 100.0;
-  this->kalman_config_.theta_ini = 7.0;
-  this->kalman_config_.v_ini = 10.0;
-  this->kalman_config_.steering_ini = 8.8;
-  this->kalman_config_.v_model = 20.6; // max. acceleration estimation of the robot
-  this->kalman_config_.steering_model = 10.75; // max. steering rate
+  this->kalman_config_.x_ini = 0.1;
+  this->kalman_config_.y_ini = 0.1;
+  this->kalman_config_.theta_ini = 0.01;
+  this->kalman_config_.x_model = 0.05;
+  this->kalman_config_.y_model = 0.05;
+  this->kalman_config_.theta_model = 0.01;
   this->kalman_config_.outlier_mahalanobis_threshold = 1000000;
-  this->wheel_base_ = 1.05;
-  this->ekf_ = new CEkf(this->kalman_config_, this->wheel_base_);
+  this->ekf_ = new CEkf(this->kalman_config_);
   this->loop_rate_ = 10; //in [Hz]
   this->flagSendPose = false;
+  this->orientation_gps_provisional_ = 0.0;
 
   // [init publishers]
   this->pose_publisher_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
@@ -27,8 +26,6 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
   this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry/gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg,
                                                             this);
   this->odom_raw_sub_ = this->public_node_handle_.subscribe("/odometry", 1, &EkfFusionAlgNode::cb_getRawOdomMsg, this);
-  this->estimated_ackermann_sub_ = this->public_node_handle_.subscribe("/estimated_ackermann_state", 1,
-                                                                       &EkfFusionAlgNode::cb_ackermannState, this);
 
   // [init services]
 
@@ -46,9 +43,6 @@ EkfFusionAlgNode::~EkfFusionAlgNode(void)
 
 void EkfFusionAlgNode::mainNodeThread(void)
 {
-
-  this->ekf_->predict();
-
   // [fill msg structures]
 
   // [fill srv structure and make request to the server]
@@ -71,7 +65,7 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
   ekf::SlamObservation obs;
 
   double min_std_x = 0.1, min_std_y = 0.1, min_std_theta = 0.017 * 2; /// GET FROM PARAMETER !!!!
-  double var_max = 2 * 2, var_max_theta = 0.017 * 10 * 0.017 * 10; /// GET FROM PARAMETER !!!!
+  double var_max = 4 * 4, var_max_theta = 0.017 * 10 * 0.017 * 10; /// GET FROM PARAMETER !!!!
 
   //get yaw information
   tf::Quaternion q(pose_msg->pose.pose.orientation.x, pose_msg->pose.pose.orientation.y,
@@ -106,12 +100,10 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     obs.sigma_theta = min_std_theta * min_std_theta;
   }
 
-  this->ekf_->update(obs);
-
   if (obs.sigma_x > var_max || obs.sigma_x > var_max || obs.sigma_theta > var_max_theta)
   {
-    Eigen::Matrix<double, 5, 1> state;
-    Eigen::Matrix<double, 5, 5> covariance;
+    Eigen::Matrix<double, 3, 1> state;
+    Eigen::Matrix<double, 3, 3> covariance;
 
     this->ekf_->getStateAndCovariance(state, covariance);
 
@@ -135,7 +127,10 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->pose_filtered_.pose.covariance[35] = covariance(2, 2);
     this->flagSendPose = true;
   }
-  this->flagSendPose = false;
+  else
+  {
+    this->ekf_->update(obs);
+  }
 
   this->alg_.unlock();
 }
@@ -145,13 +140,15 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   this->alg_.lock();
 
   ekf::GnssObservation obs;
-  double min_std_x = 0.1, min_std_y = 0.1; /// GET FROM PARAMETER !!!!
+  double min_std_x = 0.9, min_std_y = 0.9; /// GET FROM PARAMETER !!!!
 
   //set observation
   obs.x = odom_msg->pose.pose.position.x;
   obs.y = odom_msg->pose.pose.position.y;
+  obs.theta = this->orientation_gps_provisional_;
   obs.sigma_x = odom_msg->pose.covariance[0];
   obs.sigma_y = odom_msg->pose.covariance[7];
+  obs.sigma_theta = 0.001;
 
   //saturation of gps variances
   if (obs.sigma_x < min_std_x * min_std_x)
@@ -170,9 +167,13 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
 
 void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom_msg)
 {
+  static double x_prev = 0.0;
+  static double y_prev = 0.0;
+  static double theta_prev = 0.0;
+
   this->alg_.lock();
 
-  ekf::ImuObservation obs;
+  ekf::OdomAction act;
 
   //get yaw information
   tf::Quaternion q(odom_msg->pose.pose.orientation.x, odom_msg->pose.pose.orientation.y,
@@ -182,18 +183,18 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   m.getRPY(roll, pitch, yaw);
 
   //set observation
-  obs.theta = yaw;
-  obs.sigma_theta = 0.1; //get from odometry cov.!!!!
+  act.delta_x = odom_msg->pose.pose.position.x - x_prev;
+  act.delta_y = odom_msg->pose.pose.position.y - y_prev;
+  act.delta_theta = yaw - theta_prev;
 
-  this->ekf_->update(obs);
+  this->ekf_->predict(act);
 
-  this->alg_.unlock();
-}
+  //for next step
+  x_prev = odom_msg->pose.pose.position.x;
+  y_prev = odom_msg->pose.pose.position.y;
+  theta_prev = yaw;
+  this->orientation_gps_provisional_ = yaw;
 
-void EkfFusionAlgNode::cb_ackermannState(
-    const ackermann_msgs::AckermannDriveStamped::ConstPtr& estimated_ackermann_state_msg)
-{
-  this->alg_.lock();
   this->alg_.unlock();
 }
 

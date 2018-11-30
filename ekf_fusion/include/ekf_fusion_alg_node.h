@@ -48,11 +48,11 @@ class EkfFusionAlgNode : public algorithm_base::IriBaseAlgorithm<EkfFusionAlgori
 {
 private:
 
-  double wheel_base_;
   ekf::KalmanConfiguration kalman_config_;
   CEkfPtr ekf_;
   bool flagSendPose;
   geometry_msgs::PoseWithCovarianceStamped pose_filtered_;
+  double orientation_gps_provisional_;
 
   // [publisher attributes]
   ros::Publisher pose_publisher_;
@@ -61,7 +61,6 @@ private:
   ros::Subscriber odom_gps_sub_;
   ros::Subscriber odom_raw_sub_;
   ros::Subscriber amcl_pose_sub_;
-  ros::Subscriber estimated_ackermann_sub_;
 
   /**
    * \brief callback for read pose messages
@@ -83,11 +82,6 @@ private:
    * execution of the node.
    */
   void cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom_msg);
-
-  /**
-   * \brief Callback for read ackermann messages.
-   */
-  void cb_ackermannState(const ackermann_msgs::AckermannDriveStamped::ConstPtr& estimated_ackermann_state_msg);
 
   // [service attributes]
 
