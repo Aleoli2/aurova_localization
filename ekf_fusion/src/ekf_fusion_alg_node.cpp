@@ -5,25 +5,27 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
 {
 
   //init class attributes if necessary
-  this->kalman_config_.x_ini = 0.1;
+  this->kalman_config_.x_ini = 0.1; //set first amcl variances
   this->kalman_config_.y_ini = 0.1;
   this->kalman_config_.theta_ini = 0.01;
-  this->kalman_config_.x_model = 0.05;
+  this->kalman_config_.x_model = 0.05; //0.016 / 9
   this->kalman_config_.y_model = 0.05;
-  this->kalman_config_.theta_model = 0.01;
+  this->kalman_config_.theta_model = 0.01; //0.00037
   this->kalman_config_.outlier_mahalanobis_threshold = 1000000;
   this->ekf_ = new CEkf(this->kalman_config_);
   this->loop_rate_ = 10; //in [Hz]
-  this->flagSendPose = false;
-  this->orientation_gps_provisional_ = 0.0;
+  this->flag_send_pose = false;
+  this->flag_plot_pose = false;
 
   // [init publishers]
   this->pose_publisher_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
       > ("/initialpose", 1);
+  this->pose_plot_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
+      > ("/initialpose_plot", 1);
 
   // [init subscribers]
   this->amcl_pose_sub_ = this->public_node_handle_.subscribe("/amcl_pose", 1, &EkfFusionAlgNode::cb_getPoseMsg, this);
-  this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry/gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg,
+  this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg,
                                                             this);
   this->odom_raw_sub_ = this->public_node_handle_.subscribe("/odometry", 1, &EkfFusionAlgNode::cb_getRawOdomMsg, this);
 
@@ -50,10 +52,15 @@ void EkfFusionAlgNode::mainNodeThread(void)
   // [fill action structure and make request to the action server]
 
   // [publish messages]
-  if (this->flagSendPose)
+  if (this->flag_plot_pose)
+  {
+    this->pose_plot_pub_.publish(this->pose_plot_);
+    this->flag_plot_pose = false;
+  }
+  if (this->flag_send_pose)
   {
     this->pose_publisher_.publish(this->pose_filtered_);
-    this->flagSendPose = false;
+    this->flag_send_pose = false;
   }
 }
 
@@ -125,7 +132,7 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->pose_filtered_.pose.covariance[30] = covariance(2, 0);
     this->pose_filtered_.pose.covariance[31] = covariance(2, 1);
     this->pose_filtered_.pose.covariance[35] = covariance(2, 2);
-    this->flagSendPose = true;
+    this->flag_send_pose = true;
   }
   else
   {
@@ -142,13 +149,20 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   ekf::GnssObservation obs;
   double min_std_x = 0.9, min_std_y = 0.9; /// GET FROM PARAMETER !!!!
 
+  //get yaw information
+  tf::Quaternion q(odom_msg->pose.pose.orientation.x, odom_msg->pose.pose.orientation.y,
+                   odom_msg->pose.pose.orientation.z, odom_msg->pose.pose.orientation.w);
+  tf::Matrix3x3 m(q);
+  double roll, pitch, yaw;
+  m.getRPY(roll, pitch, yaw);
+
   //set observation
   obs.x = odom_msg->pose.pose.position.x;
   obs.y = odom_msg->pose.pose.position.y;
-  obs.theta = this->orientation_gps_provisional_;
+  obs.theta = yaw;
   obs.sigma_x = odom_msg->pose.covariance[0];
   obs.sigma_y = odom_msg->pose.covariance[7];
-  obs.sigma_theta = 0.001;
+  obs.sigma_theta = odom_msg->pose.covariance[35];
 
   //saturation of gps variances
   if (obs.sigma_x < min_std_x * min_std_x)
@@ -193,7 +207,33 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   x_prev = odom_msg->pose.pose.position.x;
   y_prev = odom_msg->pose.pose.position.y;
   theta_prev = yaw;
-  this->orientation_gps_provisional_ = yaw;
+
+  Eigen::Matrix<double, 3, 1> state;
+  Eigen::Matrix<double, 3, 3> covariance;
+
+  this->ekf_->getStateAndCovariance(state, covariance);
+
+  ////////////////////////////////////////////////////////////////////////////////
+  //update ros message structure
+  this->pose_plot_.header.frame_id = "/map"; //load from parameter
+  tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
+  this->pose_plot_.pose.pose.position.x = state(0);
+  this->pose_plot_.pose.pose.position.y = state(1);
+  this->pose_plot_.pose.pose.orientation.x = quaternion[0];
+  this->pose_plot_.pose.pose.orientation.y = quaternion[1];
+  this->pose_plot_.pose.pose.orientation.z = quaternion[2];
+  this->pose_plot_.pose.pose.orientation.w = quaternion[3];
+  this->pose_plot_.pose.covariance[0] = covariance(0, 0);
+  this->pose_plot_.pose.covariance[1] = covariance(0, 1);
+  this->pose_plot_.pose.covariance[5] = covariance(0, 2);
+  this->pose_plot_.pose.covariance[6] = covariance(1, 0);
+  this->pose_plot_.pose.covariance[7] = covariance(1, 1);
+  this->pose_plot_.pose.covariance[11] = covariance(1, 2);
+  this->pose_plot_.pose.covariance[30] = covariance(2, 0);
+  this->pose_plot_.pose.covariance[31] = covariance(2, 1);
+  this->pose_plot_.pose.covariance[35] = covariance(2, 2);
+  this->flag_plot_pose = true;
+  ////////////////////////////////////////////////////////////////////////////////
 
   this->alg_.unlock();
 }

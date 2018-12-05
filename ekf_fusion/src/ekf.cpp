@@ -93,6 +93,12 @@ double CEkf::update(ekf::GnssObservation obs)
     e(1) = X_(1);
     e(2) = X_(2);
 
+    //for differential problems
+    if (e(2) < -1 * PI / 2 && y(2) > PI / 2)
+      e(2) = e(2) + 2 * PI;
+    else if (y(2) < -1 * PI / 2 && e(2) > PI / 2)
+      y(2) = y(2) + 2 * PI;
+
     // Innovation
     z = y - e;
 
@@ -156,6 +162,9 @@ double CEkf::update(ekf::SlamObservation obs)
     X_(0) = obs.x;
     X_(1) = obs.y;
     X_(2) = obs.theta;
+    P_(0, 0) = obs.sigma_x; // initial value for x variance;
+    P_(1, 1) = obs.sigma_y; // initial value for y variance
+    P_(2, 2) = obs.sigma_theta; // initial value for orientation variance
     flag_ekf_initialised_ = true;
   }
   else
@@ -172,6 +181,12 @@ double CEkf::update(ekf::SlamObservation obs)
     e(0) = X_(0);
     e(1) = X_(1);
     e(2) = X_(2);
+
+    //for differential problems
+    if (e(2) < -1 * PI / 2 && y(2) > PI / 2)
+      e(2) = e(2) + 2 * PI;
+    else if (y(2) < -1 * PI / 2 && e(2) > PI / 2)
+      y(2) = y(2) + 2 * PI;
 
     // Innovation
     z = y - e;

@@ -50,12 +50,14 @@ private:
 
   ekf::KalmanConfiguration kalman_config_;
   CEkfPtr ekf_;
-  bool flagSendPose;
+  bool flag_send_pose;
+  bool flag_plot_pose;
+  geometry_msgs::PoseWithCovarianceStamped pose_plot_;
   geometry_msgs::PoseWithCovarianceStamped pose_filtered_;
-  double orientation_gps_provisional_;
 
   // [publisher attributes]
   ros::Publisher pose_publisher_;
+  ros::Publisher pose_plot_pub_;
 
   // [subscriber attributes]
   ros::Subscriber odom_gps_sub_;
