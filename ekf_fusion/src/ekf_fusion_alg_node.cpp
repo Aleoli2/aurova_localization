@@ -11,7 +11,7 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
   this->kalman_config_.x_model = 0.05; //0.016 / 9
   this->kalman_config_.y_model = 0.05;
   this->kalman_config_.theta_model = 0.01; //0.00037
-  this->kalman_config_.outlier_mahalanobis_threshold = 1000000;
+  this->kalman_config_.outlier_mahalanobis_threshold = 4.0;
   this->ekf_ = new CEkf(this->kalman_config_);
   this->loop_rate_ = 10; //in [Hz]
   this->flag_send_pose = false;
@@ -126,16 +126,16 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->pose_filtered_.pose.pose.orientation.w = quaternion[3];
     this->pose_filtered_.pose.covariance = pose_msg->pose.covariance;
     /*
-    this->pose_filtered_.pose.covariance[0] = covariance(0, 0);
-    this->pose_filtered_.pose.covariance[1] = covariance(0, 1);
-    this->pose_filtered_.pose.covariance[5] = covariance(0, 2);
-    this->pose_filtered_.pose.covariance[6] = covariance(1, 0);
-    this->pose_filtered_.pose.covariance[7] = covariance(1, 1);
-    this->pose_filtered_.pose.covariance[11] = covariance(1, 2);
-    this->pose_filtered_.pose.covariance[30] = covariance(2, 0);
-    this->pose_filtered_.pose.covariance[31] = covariance(2, 1);
-    this->pose_filtered_.pose.covariance[35] = covariance(2, 2);
-    */
+     this->pose_filtered_.pose.covariance[0] = covariance(0, 0);
+     this->pose_filtered_.pose.covariance[1] = covariance(0, 1);
+     this->pose_filtered_.pose.covariance[5] = covariance(0, 2);
+     this->pose_filtered_.pose.covariance[6] = covariance(1, 0);
+     this->pose_filtered_.pose.covariance[7] = covariance(1, 1);
+     this->pose_filtered_.pose.covariance[11] = covariance(1, 2);
+     this->pose_filtered_.pose.covariance[30] = covariance(2, 0);
+     this->pose_filtered_.pose.covariance[31] = covariance(2, 1);
+     this->pose_filtered_.pose.covariance[35] = covariance(2, 2);
+     */
     if (count > 9)
     {
       this->flag_send_pose = true;
@@ -203,13 +203,20 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   tf::Quaternion q(odom_msg->pose.pose.orientation.x, odom_msg->pose.pose.orientation.y,
                    odom_msg->pose.pose.orientation.z, odom_msg->pose.pose.orientation.w);
   tf::Matrix3x3 m(q);
-  double roll, pitch, yaw;
+  double roll, pitch, yaw, yaw_use;
   m.getRPY(roll, pitch, yaw);
+  yaw_use = yaw;
+
+  //for differential problems
+  if (yaw < -1 * PI / 2 && theta_prev > PI / 2)
+    yaw_use = yaw_use + 2 * PI;
+  else if (theta_prev < -1 * PI / 2 && yaw > PI / 2)
+    theta_prev = theta_prev + 2 * PI;
 
   //set observation
   act.delta_x = odom_msg->pose.pose.position.x - x_prev;
   act.delta_y = odom_msg->pose.pose.position.y - y_prev;
-  act.delta_theta = yaw - theta_prev;
+  act.delta_theta = yaw_use - theta_prev;
 
   this->ekf_->predict(act);
 

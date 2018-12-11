@@ -70,6 +70,12 @@ void CEkf::predict(ekf::OdomAction act)
     X_(1) = X_(1) + u(1);
     X_(2) = X_(2) + u(2);
 
+    //angle correction
+    if (X_(2) > PI)
+      X_(2) = X_(2) - 2 * PI;
+    else if (X_(2) < -1 * PI)
+      X_(2) = X_(2) + 2 * PI;
+
     // Covariance prediction
     P_ = F_X_ * P_ * F_X_.transpose() + F_q_ * Q_ * F_q_.transpose();
   }
