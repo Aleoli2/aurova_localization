@@ -61,8 +61,10 @@ void CEkf::predict(ekf::OdomAction act)
     // State prediction
     //X_ = F_X_ * X_ + F_u_ * u;
     Eigen::Matrix<double, 3, 1> u = Eigen::Matrix<double, 3, 1>::Zero();
-    u(0) = act.delta_x;
-    u(1) = act.delta_y;
+    double mod = sqrt(pow(act.delta_x, 2) + pow(act.delta_y, 2));
+
+    u(0) = mod * cos(X_(2));
+    u(1) = mod * sin(X_(2));
     u(2) = act.delta_theta;
     X_(0) = X_(0) + u(0);
     X_(1) = X_(1) + u(1);

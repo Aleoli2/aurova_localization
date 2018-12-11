@@ -73,6 +73,7 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
 
   double min_std_x = 0.1, min_std_y = 0.1, min_std_theta = 0.017 * 2; /// GET FROM PARAMETER !!!!
   double var_max = 4 * 4, var_max_theta = 0.017 * 10 * 0.017 * 10; /// GET FROM PARAMETER !!!!
+  static int count = 10;
 
   //get yaw information
   tf::Quaternion q(pose_msg->pose.pose.orientation.x, pose_msg->pose.pose.orientation.y,
@@ -123,6 +124,8 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->pose_filtered_.pose.pose.orientation.y = quaternion[1];
     this->pose_filtered_.pose.pose.orientation.z = quaternion[2];
     this->pose_filtered_.pose.pose.orientation.w = quaternion[3];
+    this->pose_filtered_.pose.covariance = pose_msg->pose.covariance;
+    /*
     this->pose_filtered_.pose.covariance[0] = covariance(0, 0);
     this->pose_filtered_.pose.covariance[1] = covariance(0, 1);
     this->pose_filtered_.pose.covariance[5] = covariance(0, 2);
@@ -132,11 +135,18 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->pose_filtered_.pose.covariance[30] = covariance(2, 0);
     this->pose_filtered_.pose.covariance[31] = covariance(2, 1);
     this->pose_filtered_.pose.covariance[35] = covariance(2, 2);
-    this->flag_send_pose = true;
+    */
+    if (count > 9)
+    {
+      this->flag_send_pose = true;
+      count = 0;
+    }
+    count++;
   }
   else
   {
     this->ekf_->update(obs);
+    count = 10;
   }
 
   this->alg_.unlock();
