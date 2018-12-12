@@ -11,7 +11,7 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
   this->kalman_config_.x_model = 0.05; //0.016 / 9
   this->kalman_config_.y_model = 0.05;
   this->kalman_config_.theta_model = 0.01; //0.00037
-  this->kalman_config_.outlier_mahalanobis_threshold = 4.0;
+  this->kalman_config_.outlier_mahalanobis_threshold = 5.0;
   this->ekf_ = new CEkf(this->kalman_config_);
   this->loop_rate_ = 10; //in [Hz]
   this->flag_send_pose = false;
@@ -71,9 +71,8 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
 
   ekf::SlamObservation obs;
 
-  double min_std_x = 0.1, min_std_y = 0.1, min_std_theta = 0.017 * 2; /// GET FROM PARAMETER !!!!
+  //double min_std_x = 0.1, min_std_y = 0.1, min_std_theta = 0.017 * 2; /// GET FROM PARAMETER !!!!
   double var_max = 4 * 4, var_max_theta = 0.017 * 10 * 0.017 * 10; /// GET FROM PARAMETER !!!!
-  static int count = 10;
 
   //get yaw information
   tf::Quaternion q(pose_msg->pose.pose.orientation.x, pose_msg->pose.pose.orientation.y,
@@ -95,18 +94,20 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
           && !isnan(obs.sigma_theta) && "Error in EkfFusionAlgNode::cb_getPoseMsg: nan value");
 
   //saturation of amcl variances
-  if (obs.sigma_x < min_std_x * min_std_x)
-  {
-    obs.sigma_x = min_std_x * min_std_x;
-  }
-  if (obs.sigma_y < min_std_y * min_std_y)
-  {
-    obs.sigma_y = min_std_y * min_std_y;
-  }
-  if (obs.sigma_theta < min_std_theta * min_std_theta)
-  {
-    obs.sigma_theta = min_std_theta * min_std_theta;
-  }
+  /*
+   if (obs.sigma_x < min_std_x * min_std_x)
+   {
+   obs.sigma_x = min_std_x * min_std_x;
+   }
+   if (obs.sigma_y < min_std_y * min_std_y)
+   {
+   obs.sigma_y = min_std_y * min_std_y;
+   }
+   if (obs.sigma_theta < min_std_theta * min_std_theta)
+   {
+   obs.sigma_theta = min_std_theta * min_std_theta;
+   }
+   */
 
   if (obs.sigma_x > var_max || obs.sigma_x > var_max || obs.sigma_theta > var_max_theta)
   {
@@ -126,28 +127,22 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->pose_filtered_.pose.pose.orientation.w = quaternion[3];
     this->pose_filtered_.pose.covariance = pose_msg->pose.covariance;
     /*
-     this->pose_filtered_.pose.covariance[0] = covariance(0, 0);
+     this->pose_filtered_.pose.covariance[0] = covariance(0, 0) * 2.0;
      this->pose_filtered_.pose.covariance[1] = covariance(0, 1);
      this->pose_filtered_.pose.covariance[5] = covariance(0, 2);
      this->pose_filtered_.pose.covariance[6] = covariance(1, 0);
-     this->pose_filtered_.pose.covariance[7] = covariance(1, 1);
+     this->pose_filtered_.pose.covariance[7] = covariance(1, 1) * 2.0;
      this->pose_filtered_.pose.covariance[11] = covariance(1, 2);
      this->pose_filtered_.pose.covariance[30] = covariance(2, 0);
      this->pose_filtered_.pose.covariance[31] = covariance(2, 1);
-     this->pose_filtered_.pose.covariance[35] = covariance(2, 2);
+     this->pose_filtered_.pose.covariance[35] = covariance(2, 2) * 2.0;
      */
-    if (count > 9)
-    {
-      this->flag_send_pose = true;
-      count = 0;
-    }
-    count++;
+
+    this->flag_send_pose = true;
+
   }
-  else
-  {
-    this->ekf_->update(obs);
-    count = 10;
-  }
+
+  this->ekf_->update(obs);
 
   this->alg_.unlock();
 }
