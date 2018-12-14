@@ -5,9 +5,6 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
 {
 
   //init class attributes if necessary
-  this->kalman_config_.x_ini = 0.1; //set first amcl variances
-  this->kalman_config_.y_ini = 0.1;
-  this->kalman_config_.theta_ini = 0.01;
   this->kalman_config_.x_model = 0.05; //0.016 / 9
   this->kalman_config_.y_model = 0.05;
   this->kalman_config_.theta_model = 0.01; //0.00037
@@ -70,9 +67,9 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
   this->alg_.lock();
 
   ekf::SlamObservation obs;
+  static int count = 0;
 
-  //double min_std_x = 0.1, min_std_y = 0.1, min_std_theta = 0.017 * 2; /// GET FROM PARAMETER !!!!
-  double var_max = 4 * 4, var_max_theta = 0.017 * 10 * 0.017 * 10; /// GET FROM PARAMETER !!!!
+  double var_max = 3 * 3, var_max_theta = 0.017 * 10 * 0.017 * 10; /// GET FROM PARAMETER !!!!
 
   //get yaw information
   tf::Quaternion q(pose_msg->pose.pose.orientation.x, pose_msg->pose.pose.orientation.y,
@@ -93,22 +90,6 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
       !isnan(obs.x) && !isnan(obs.y) && !isnan(obs.theta) && !isnan(obs.sigma_x) && !isnan(obs.sigma_y)
           && !isnan(obs.sigma_theta) && "Error in EkfFusionAlgNode::cb_getPoseMsg: nan value");
 
-  //saturation of amcl variances
-  /*
-   if (obs.sigma_x < min_std_x * min_std_x)
-   {
-   obs.sigma_x = min_std_x * min_std_x;
-   }
-   if (obs.sigma_y < min_std_y * min_std_y)
-   {
-   obs.sigma_y = min_std_y * min_std_y;
-   }
-   if (obs.sigma_theta < min_std_theta * min_std_theta)
-   {
-   obs.sigma_theta = min_std_theta * min_std_theta;
-   }
-   */
-
   if (obs.sigma_x > var_max || obs.sigma_x > var_max || obs.sigma_theta > var_max_theta)
   {
     Eigen::Matrix<double, 3, 1> state;
@@ -126,20 +107,17 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->pose_filtered_.pose.pose.orientation.z = quaternion[2];
     this->pose_filtered_.pose.pose.orientation.w = quaternion[3];
     this->pose_filtered_.pose.covariance = pose_msg->pose.covariance;
-    /*
-     this->pose_filtered_.pose.covariance[0] = covariance(0, 0) * 2.0;
-     this->pose_filtered_.pose.covariance[1] = covariance(0, 1);
-     this->pose_filtered_.pose.covariance[5] = covariance(0, 2);
-     this->pose_filtered_.pose.covariance[6] = covariance(1, 0);
-     this->pose_filtered_.pose.covariance[7] = covariance(1, 1) * 2.0;
-     this->pose_filtered_.pose.covariance[11] = covariance(1, 2);
-     this->pose_filtered_.pose.covariance[30] = covariance(2, 0);
-     this->pose_filtered_.pose.covariance[31] = covariance(2, 1);
-     this->pose_filtered_.pose.covariance[35] = covariance(2, 2) * 2.0;
-     */
 
-    this->flag_send_pose = true;
+    if (count % 4 == 0)
+    {
+      this->flag_send_pose = true;
+    }
 
+    count++;
+  }
+  else
+  {
+    count = 0;
   }
 
   this->ekf_->update(obs);
@@ -152,7 +130,6 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   this->alg_.lock();
 
   ekf::GnssObservation obs;
-  double min_std_x = 0.9, min_std_y = 0.9; /// GET FROM PARAMETER !!!!
 
   //get yaw information
   tf::Quaternion q(odom_msg->pose.pose.orientation.x, odom_msg->pose.pose.orientation.y,
@@ -168,16 +145,6 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   obs.sigma_x = odom_msg->pose.covariance[0];
   obs.sigma_y = odom_msg->pose.covariance[7];
   obs.sigma_theta = odom_msg->pose.covariance[35];
-
-  //saturation of gps variances
-  if (obs.sigma_x < min_std_x * min_std_x)
-  {
-    obs.sigma_x = min_std_x * min_std_x;
-  }
-  if (obs.sigma_y < min_std_y * min_std_y)
-  {
-    obs.sigma_y = min_std_y * min_std_y;
-  }
 
   this->ekf_->update(obs);
 

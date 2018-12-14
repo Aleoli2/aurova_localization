@@ -59,7 +59,6 @@ void CEkf::predict(ekf::OdomAction act)
   if (flag_ekf_initialised_)
   {
     // State prediction
-    //X_ = F_X_ * X_ + F_u_ * u;
     Eigen::Matrix<double, 3, 1> u = Eigen::Matrix<double, 3, 1>::Zero();
     double mod = sqrt(pow(act.delta_x, 2) + pow(act.delta_y, 2));
 
