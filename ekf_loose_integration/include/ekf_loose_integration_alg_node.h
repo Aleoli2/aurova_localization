@@ -27,6 +27,10 @@
 
 #include <iri_base_algorithm/iri_base_algorithm.h>
 #include "ekf_loose_integration_alg.h"
+#include "ackermann_msgs/AckermannDriveStamped.h"
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include "nav_msgs/Odometry.h"
+#include "sensor_msgs/Imu.h"
 
 // [publisher subscriber headers]
 
@@ -41,9 +45,42 @@
 class EkfLooseIntegrationAlgNode : public algorithm_base::IriBaseAlgorithm<EkfLooseIntegrationAlgorithm>
 {
   private:
+    geometry_msgs::PoseWithCovarianceStamped estimated_pose_;
+    ackermann_msgs::AckermannDriveStamped estimated_ackermann_state_;
+    sensor_msgs::Imu imu_;
     // [publisher attributes]
+    ros::Publisher pose_publisher_;
 
     // [subscriber attributes]
+    ros::Subscriber odom_GNSS_sub_;
+    ros::Subscriber estimated_ackermann_subscriber_;
+    ros::Subscriber AMCL_pose_sub_;
+    ros::Subscriber imu_subscriber_;
+
+    /**
+     * \brief callback to read pose messages
+     * This message can be read from different localization sources by remapping in the
+     * execution of the node.
+     */
+    void cb_AMCLPose(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& pose_msg);
+
+    /**
+     * \brief callback to read odometry messages
+     * This message can be read from different localization sources by remapping in the
+     * execution of the node.
+     */
+    void cb_GNSSOdom(const nav_msgs::Odometry::ConstPtr& odom_msg);
+
+    /**
+     * \brief Callback to read ackermann messages.
+     */
+    void cb_ackermannState(const ackermann_msgs::AckermannDriveStamped::ConstPtr& estimated_ackermann_state_msg);
+
+
+    /**
+     * \brief Callback for read imu messages.
+     */
+    void cb_imuData(const sensor_msgs::Imu::ConstPtr& IMU_msg);
 
     // [service attributes]
 
