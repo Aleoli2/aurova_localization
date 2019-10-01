@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(wolf_fusion)
+project(ekf_loose_integration)
 
 ## Find catkin macros and libraries
 find_package(catkin REQUIRED)
@@ -15,8 +15,6 @@ find_package(catkin REQUIRED COMPONENTS iri_base_algorithm)
 #           Add system and labrobotica dependencies here
 # ******************************************************************** 
 # find_package(<dependency> REQUIRED)
-find_package(Ceres REQUIRED)
-find_package(wolf REQUIRED)
 
 # ******************************************************************** 
 #           Add topic, service and action definition here
@@ -51,7 +49,7 @@ find_package(wolf REQUIRED)
 # ******************************************************************** 
 #                 Add the dynamic reconfigure file 
 # ******************************************************************** 
-generate_dynamic_reconfigure_options(cfg/WolfFusion.cfg)
+generate_dynamic_reconfigure_options(cfg/EkfLooseIntegration.cfg)
 
 # ******************************************************************** 
 #                 Add run time dependencies here
@@ -66,7 +64,7 @@ catkin_package(
 # ******************************************************************** 
 #      Add system and labrobotica run time dependencies here
 # ******************************************************************** 
-  DEPENDS Eigen
+#  DEPENDS 
 )
 
 ###########
@@ -77,18 +75,14 @@ catkin_package(
 #                   Add the include directories 
 # ******************************************************************** 
 include_directories(include)
-include_directories(${catkin_INCLUDE_DIRS}
-                    ${EIGEN_INCLUDE_DIRS}
-                    ${CERES_INCLUDE_DIRS}
-                    ${wolf_INCLUDE_DIRS})
-                    message("wolf_INCLUDE_DIRS: ${wolf_INCLUDE_DIRS}")
+include_directories(${catkin_INCLUDE_DIRS})
 # include_directories(${<dependency>_INCLUDE_DIR})
 
 ## Declare a cpp library
 # add_library(${PROJECT_NAME} <list of source files>)
 
 ## Declare a cpp executable
-add_executable(${PROJECT_NAME} src/wolf_fusion_alg.cpp src/wolf_fusion_alg_node.cpp)
+add_executable(${PROJECT_NAME} src/ekf_loose_integration_alg.cpp src/ekf_loose_integration_alg_node.cpp)
 
 # ******************************************************************** 
 #                   Add the libraries

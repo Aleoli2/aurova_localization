@@ -22,14 +22,11 @@
 // refer to the IRI wiki page for more information:
 // http://wikiri.upc.es/index.php/Robotics_Lab
 
-#ifndef _wolf_fusion_alg_node_h_
-#define _wolf_fusion_alg_node_h_
+#ifndef _ekf_loose_integration_alg_node_h_
+#define _ekf_loose_integration_alg_node_h_
 
 #include <iri_base_algorithm/iri_base_algorithm.h>
-#include "wolf_fusion_alg.h"
-
-#include "core/common/wolf.h"
-#include "core/ceres_wrapper/ceres_manager.h"
+#include "ekf_loose_integration_alg.h"
 
 // [publisher subscriber headers]
 
@@ -41,7 +38,7 @@
  * \brief IRI ROS Specific Algorithm Class
  *
  */
-class WolfFusionAlgNode : public algorithm_base::IriBaseAlgorithm<WolfFusionAlgorithm>
+class EkfLooseIntegrationAlgNode : public algorithm_base::IriBaseAlgorithm<EkfLooseIntegrationAlgorithm>
 {
   private:
     // [publisher attributes]
@@ -70,7 +67,7 @@ class WolfFusionAlgNode : public algorithm_base::IriBaseAlgorithm<WolfFusionAlgo
     * This constructor initializes specific class attributes and all ROS
     * communications variables to enable message exchange.
     */
-    WolfFusionAlgNode(void);
+    EkfLooseIntegrationAlgNode(void);
 
    /**
     * \brief Destructor
@@ -78,7 +75,7 @@ class WolfFusionAlgNode : public algorithm_base::IriBaseAlgorithm<WolfFusionAlgo
     * This destructor frees all necessary dynamic memory allocated within this
     * this class.
     */
-    ~WolfFusionAlgNode(void);
+    ~EkfLooseIntegrationAlgNode(void);
 
   protected:
    /**
