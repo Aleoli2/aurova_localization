@@ -31,6 +31,7 @@
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "nav_msgs/Odometry.h"
 #include "sensor_msgs/Imu.h"
+#include <Eigen/Dense>
 
 // [publisher subscriber headers]
 
@@ -48,6 +49,21 @@ class EkfLooseIntegrationAlgNode : public algorithm_base::IriBaseAlgorithm<EkfLo
     geometry_msgs::PoseWithCovarianceStamped estimated_pose_;
     ackermann_msgs::AckermannDriveStamped estimated_ackermann_state_;
     sensor_msgs::Imu imu_;
+
+    Eigen::Vector3d acc_reading_;
+    Eigen::Vector3d acc_corrected_;
+
+    Eigen::Vector3d acc_bias_;
+    Eigen::Matrix3d acc_scale_factor_;
+    Eigen::Matrix3d acc_misaligment_;
+
+    Eigen::Vector3d gyro_reading_;
+    Eigen::Vector3d gyro_corrected_;
+
+    Eigen::Vector3d gyro_bias_;
+    Eigen::Matrix3d gyro_scale_factor_;
+    Eigen::Matrix3d gyro_misaligment_;
+
     // [publisher attributes]
     ros::Publisher pose_publisher_;
 
