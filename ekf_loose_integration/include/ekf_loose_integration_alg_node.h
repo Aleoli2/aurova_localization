@@ -32,6 +32,7 @@
 #include "nav_msgs/Odometry.h"
 #include "sensor_msgs/Imu.h"
 #include <Eigen/Dense>
+#include "tf_conversions/tf_eigen.h"
 
 // [publisher subscriber headers]
 
@@ -46,8 +47,16 @@
 class EkfLooseIntegrationAlgNode : public algorithm_base::IriBaseAlgorithm<EkfLooseIntegrationAlgorithm>
 {
   private:
+
+    Eigen::Matrix<double, 9, 1> rover_state_;
+
+    bool flag_first_imu_msg_received_;
+    double previous_timestamp_;
+    double current_timestamp_;
+
     geometry_msgs::PoseWithCovarianceStamped estimated_pose_;
     ackermann_msgs::AckermannDriveStamped estimated_ackermann_state_;
+    nav_msgs::Odometry estimated_odom_;
     sensor_msgs::Imu imu_;
 
     Eigen::Vector3d acc_reading_;
@@ -66,6 +75,7 @@ class EkfLooseIntegrationAlgNode : public algorithm_base::IriBaseAlgorithm<EkfLo
 
     // [publisher attributes]
     ros::Publisher pose_publisher_;
+    ros::Publisher odom_publisher_;
 
     // [subscriber attributes]
     ros::Subscriber odom_GNSS_sub_;
