@@ -1,4 +1,5 @@
 #include "ekf_loose_integration_alg_node.h"
+#include <XmlRpcException.h>
 
 EkfLooseIntegrationAlgNode::EkfLooseIntegrationAlgNode(void) :
   algorithm_base::IriBaseAlgorithm<EkfLooseIntegrationAlgorithm>()
@@ -27,42 +28,42 @@ EkfLooseIntegrationAlgNode::EkfLooseIntegrationAlgNode(void) :
   gyro_misaligment_  = Eigen::Matrix3d::Zero();
 
   // Using calibration results obtained with imu_tk
-  acc_bias_(0) = 1.00228;
-  acc_bias_(1) = -1.44683;
-  acc_bias_(2) = -2.11036;
+  acc_bias_(0) = 0.968207;
+  acc_bias_(1) = -1.64146;
+  acc_bias_(2) = -2.16982;
 
-  acc_scale_factor_(0,0) = 1.00871;
-  acc_scale_factor_(1,1) = 0.999859;
-  acc_scale_factor_(2,2) = 0.976556;
+  acc_scale_factor_(0,0) = 0.997842;
+  acc_scale_factor_(1,1) = 0.993924;
+  acc_scale_factor_(2,2) = 0.975817;
 
   acc_misaligment_(0,0) = 1.0;
-  acc_misaligment_(0,1) = 0.0317041;
-  acc_misaligment_(0,2) = -0.0146073;
+  acc_misaligment_(0,1) = -0.0294515;
+  acc_misaligment_(0,2) = -0.00142695;
 
   acc_misaligment_(1,1) = 1.0;
-  acc_misaligment_(1,2) = 0.00196899;
+  acc_misaligment_(1,2) = 0.00266962;
 
   acc_misaligment_(2,2) = 1.0;
 
 
-  gyro_bias_(0) = 0.000473265;
-  gyro_bias_(1) = -0.000742748;
-  gyro_bias_(2) = -4.33131 * 1e-6;
+  gyro_bias_(0) = -0.000684136;
+  gyro_bias_(1) = -0.000123011;
+  gyro_bias_(2) = -0.000412331;
 
-  gyro_scale_factor_(0,0) = 0.96651;
-  gyro_scale_factor_(1,1) = 0.993987;
-  gyro_scale_factor_(2,2) = 1.00491;
+  gyro_scale_factor_(0,0) = 0.972766;
+  gyro_scale_factor_(1,1) = 0.983783;
+  gyro_scale_factor_(2,2) = 1.014500;
 
   gyro_misaligment_(0,0) = 1.0;
-  gyro_misaligment_(0,1) = -0.0181747;
-  gyro_misaligment_(0,2) = -0.00295471;
+  gyro_misaligment_(0,1) = -0.00661431;
+  gyro_misaligment_(0,2) = 0.012135;
 
-  gyro_misaligment_(1,0) = 0.0187744;
+  gyro_misaligment_(1,0) = -0.00860842;
   gyro_misaligment_(1,1) = 1.0;
-  gyro_misaligment_(1,2) = -0.0184467;
+  gyro_misaligment_(1,2) = 0.0352662;
 
-  gyro_misaligment_(2,0) = -0.00744203;
-  gyro_misaligment_(2,1) = -0.00940402;
+  gyro_misaligment_(2,0) = -0.0185842;
+  gyro_misaligment_(2,1) = 0.00442738;
   gyro_misaligment_(2,2) = 1.0;
 
 
@@ -85,6 +86,288 @@ EkfLooseIntegrationAlgNode::EkfLooseIntegrationAlgNode(void) :
 
   this->odom_GNSS_sub_ = this->public_node_handle_.subscribe(
       "/odometry_gps", 1, &EkfLooseIntegrationAlgNode::cb_GNSSOdom, this);
+
+  XmlRpc::XmlRpcValue accMisalignMatrixConfig;
+  if (this->public_node_handle_.hasParam("/acc_misalign_matrix"))
+  {
+    try
+    {
+      this->public_node_handle_.getParam("/acc_misalign_matrix", accMisalignMatrixConfig);
+
+      ROS_ASSERT(accMisalignMatrixConfig.getType() == XmlRpc::XmlRpcValue::TypeArray);
+
+      int matSize = acc_misaligment_.rows();
+
+      for (int i = 0; i < matSize; i++)
+      {
+        for (int j = 0; j < matSize; j++)
+        {
+          try
+          {
+            // These matrices can cause problems if all the types
+            // aren't specified with decimal points. Handle that
+            // using string streams.
+            std::ostringstream ostr;
+            ostr << accMisalignMatrixConfig[matSize * i + j];
+            std::istringstream istr(ostr.str());
+            istr >> acc_misaligment_(i, j);
+          }
+          catch(XmlRpc::XmlRpcException &e)
+          {
+            throw e;
+          }
+          catch(...)
+          {
+            throw;
+          }
+        }
+      }
+    }
+    catch (XmlRpc::XmlRpcException &e)
+    {
+      ROS_ERROR_STREAM("ERROR reading IMU calibration: " <<
+                       e.getMessage() <<
+                       " for misalign_matrix (type: " <<
+                       accMisalignMatrixConfig.getType() << ")");
+    }
+    std::cout << "Loaded acc_misalign_matrix using rosparam: " << std::endl;
+    std::cout << acc_misaligment_ << std::endl;
+  }
+
+  XmlRpc::XmlRpcValue accScaleMatrixConfig;
+  if (this->public_node_handle_.hasParam("/acc_scale_matrix"))
+  {
+    try
+    {
+      this->public_node_handle_.getParam("/acc_scale_matrix", accScaleMatrixConfig);
+
+      ROS_ASSERT(accScaleMatrixConfig.getType() == XmlRpc::XmlRpcValue::TypeArray);
+
+      int matSize = acc_scale_factor_.rows();
+
+      for (int i = 0; i < matSize; i++)
+      {
+        for (int j = 0; j < matSize; j++)
+        {
+          try
+          {
+            // These matrices can cause problems if all the types
+            // aren't specified with decimal points. Handle that
+            // using string streams.
+            std::ostringstream ostr;
+            ostr << accScaleMatrixConfig[matSize * i + j];
+            std::istringstream istr(ostr.str());
+            istr >> acc_scale_factor_(i, j);
+          }
+          catch(XmlRpc::XmlRpcException &e)
+          {
+            throw e;
+          }
+          catch(...)
+          {
+            throw;
+          }
+        }
+      }
+    }
+    catch (XmlRpc::XmlRpcException &e)
+    {
+      ROS_ERROR_STREAM("ERROR reading IMU calibration: " <<
+                       e.getMessage() <<
+                       " for acc_scale_factor_matrix (type: " <<
+                       accScaleMatrixConfig.getType() << ")");
+    }
+    std::cout << "Loaded acc_scale_factor_matrix using rosparam: " << std::endl;
+    std::cout << acc_scale_factor_ << std::endl;
+  }
+
+  XmlRpc::XmlRpcValue accBiasVectorConfig;
+  if (this->public_node_handle_.hasParam("/acc_bias_vector"))
+  {
+    try
+    {
+      this->public_node_handle_.getParam("/acc_bias_vector", accBiasVectorConfig);
+
+      ROS_ASSERT(accBiasVectorConfig.getType() == XmlRpc::XmlRpcValue::TypeArray);
+
+      int matSize = acc_bias_.rows();
+
+      for (int i = 0; i < matSize; i++)
+      {
+        try
+        {
+          // These matrices can cause problems if all the types
+          // aren't specified with decimal points. Handle that
+          // using string streams.
+          std::ostringstream ostr;
+          ostr << accBiasVectorConfig[i];
+          std::istringstream istr(ostr.str());
+          istr >> acc_bias_(i);
+        }
+        catch(XmlRpc::XmlRpcException &e)
+        {
+          throw e;
+        }
+        catch(...)
+        {
+          throw;
+        }
+      }
+    }
+    catch (XmlRpc::XmlRpcException &e)
+    {
+      ROS_ERROR_STREAM("ERROR reading IMU calibration: " <<
+                       e.getMessage() <<
+                       " for acc_bias_vector (type: " <<
+                       accBiasVectorConfig.getType() << ")");
+    }
+    std::cout << "Loaded acc_bias_vector using rosparam: " << std::endl;
+    std::cout << acc_bias_ << std::endl;
+  }
+
+
+
+  ////////////////////////////////// Loading Gyro calibration!!! //////////////////////////////////////////////
+
+
+  XmlRpc::XmlRpcValue gyroMisalignMatrixConfig;
+  if (this->public_node_handle_.hasParam("/gyro_misalign_matrix"))
+  {
+    try
+    {
+      this->public_node_handle_.getParam("/gyro_misalign_matrix", gyroMisalignMatrixConfig);
+
+      ROS_ASSERT(gyroMisalignMatrixConfig.getType() == XmlRpc::XmlRpcValue::TypeArray);
+
+      int matSize = gyro_misaligment_.rows();
+
+      for (int i = 0; i < matSize; i++)
+      {
+        for (int j = 0; j < matSize; j++)
+        {
+          try
+          {
+            // These matrices can cause problems if all the types
+            // aren't specified with decimal points. Handle that
+            // using string streams.
+            std::ostringstream ostr;
+            ostr << gyroMisalignMatrixConfig[matSize * i + j];
+            std::istringstream istr(ostr.str());
+            istr >> gyro_misaligment_(i, j);
+          }
+          catch(XmlRpc::XmlRpcException &e)
+          {
+            throw e;
+          }
+          catch(...)
+          {
+            throw;
+          }
+        }
+      }
+    }
+    catch (XmlRpc::XmlRpcException &e)
+    {
+      ROS_ERROR_STREAM("ERROR reading IMU calibration: " <<
+                       e.getMessage() <<
+                       " for misalign_matrix (type: " <<
+                       gyroMisalignMatrixConfig.getType() << ")");
+    }
+    std::cout << "Loaded gyro_misalign_matrix using rosparam: " << std::endl;
+    std::cout << gyro_misaligment_ << std::endl;
+  }
+
+  XmlRpc::XmlRpcValue gyroScaleMatrixConfig;
+  if (this->public_node_handle_.hasParam("/gyro_scale_matrix"))
+  {
+    try
+    {
+      this->public_node_handle_.getParam("/gyro_scale_matrix", gyroScaleMatrixConfig);
+
+      ROS_ASSERT(gyroScaleMatrixConfig.getType() == XmlRpc::XmlRpcValue::TypeArray);
+
+      int matSize = gyro_scale_factor_.rows();
+
+      for (int i = 0; i < matSize; i++)
+      {
+        for (int j = 0; j < matSize; j++)
+        {
+          try
+          {
+            // These matrices can cause problems if all the types
+            // aren't specified with decimal points. Handle that
+            // using string streams.
+            std::ostringstream ostr;
+            ostr << gyroScaleMatrixConfig[matSize * i + j];
+            std::istringstream istr(ostr.str());
+            istr >> gyro_scale_factor_(i, j);
+          }
+          catch(XmlRpc::XmlRpcException &e)
+          {
+            throw e;
+          }
+          catch(...)
+          {
+            throw;
+          }
+        }
+      }
+    }
+    catch (XmlRpc::XmlRpcException &e)
+    {
+      ROS_ERROR_STREAM("ERROR reading IMU calibration: " <<
+                       e.getMessage() <<
+                       " for gyro_scale_factor_matrix (type: " <<
+                       gyroScaleMatrixConfig.getType() << ")");
+    }
+    std::cout << "Loaded gyro_scale_factor_matrix using rosparam: " << std::endl;
+    std::cout << gyro_scale_factor_ << std::endl;
+  }
+
+  XmlRpc::XmlRpcValue gyroBiasVectorConfig;
+  if (this->public_node_handle_.hasParam("/gyro_bias_vector"))
+  {
+    try
+    {
+      this->public_node_handle_.getParam("/gyro_bias_vector", gyroBiasVectorConfig);
+
+      ROS_ASSERT(gyroBiasVectorConfig.getType() == XmlRpc::XmlRpcValue::TypeArray);
+
+      int matSize = gyro_bias_.rows();
+
+      for (int i = 0; i < matSize; i++)
+      {
+        try
+        {
+          // These matrices can cause problems if all the types
+          // aren't specified with decimal points. Handle that
+          // using string streams.
+          std::ostringstream ostr;
+          ostr << gyroBiasVectorConfig[i];
+          std::istringstream istr(ostr.str());
+          istr >> gyro_bias_(i);
+        }
+        catch(XmlRpc::XmlRpcException &e)
+        {
+          throw e;
+        }
+        catch(...)
+        {
+          throw;
+        }
+      }
+    }
+    catch (XmlRpc::XmlRpcException &e)
+    {
+      ROS_ERROR_STREAM("ERROR reading IMU calibration: " <<
+                       e.getMessage() <<
+                       " for gyro_bias_vector (type: " <<
+                       gyroBiasVectorConfig.getType() << ")");
+    }
+    std::cout << "Loaded gyro_bias_vector using rosparam: " << std::endl;
+    std::cout << gyro_bias_ << std::endl;
+  }
+
 
   // [init services]
   
