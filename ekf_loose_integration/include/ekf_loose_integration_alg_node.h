@@ -48,11 +48,19 @@ class EkfLooseIntegrationAlgNode : public algorithm_base::IriBaseAlgorithm<EkfLo
 {
   private:
 
+    static const double G_ = 9.8;
+
     Eigen::Matrix<double, 9, 1> rover_state_;
 
-    bool flag_first_imu_msg_received_;
+    bool flag_imu_initialized_;
     double previous_timestamp_;
     double current_timestamp_;
+
+    int number_of_imu_readings_for_initialization_;
+    int number_of_imu_readings_;
+
+    Eigen::Vector3d accumlator_acc_;
+    Eigen::Vector3d mean_init_acc_;
 
     geometry_msgs::PoseWithCovarianceStamped estimated_pose_;
     ackermann_msgs::AckermannDriveStamped estimated_ackermann_state_;

@@ -9,9 +9,14 @@ EkfLooseIntegrationAlgNode::EkfLooseIntegrationAlgNode(void) :
 
   rover_state_ = Eigen::Matrix<double, 9, 1>::Zero();
 
-  flag_first_imu_msg_received_ = false;
+  flag_imu_initialized_ = false;
   previous_timestamp_ = 0.0;
   current_timestamp_ = 0.0;
+
+  number_of_imu_readings_for_initialization_ = 50; // about two and half seconds at 20 Hz
+  number_of_imu_readings_ = 0;
+  accumlator_acc_ = Eigen::Vector3d::Zero();
+  mean_init_acc_  = Eigen::Vector3d::Zero();
 
   acc_reading_       = Eigen::Vector3d::Zero();
   acc_corrected_     = Eigen::Vector3d::Zero();
@@ -386,9 +391,9 @@ EkfLooseIntegrationAlgNode::~EkfLooseIntegrationAlgNode(void)
 void EkfLooseIntegrationAlgNode::mainNodeThread(void)
 {
   // [fill msg structures]
-  this->estimated_odom_.pose.pose.position.x = rover_state_(0); //acc_corrected_(0);
-  this->estimated_odom_.pose.pose.position.y = rover_state_(1); //acc_corrected_(1);
-  this->estimated_odom_.pose.pose.position.z = rover_state_(2); //acc_corrected_(2);
+  this->estimated_odom_.pose.pose.position.x = acc_corrected_(0);//rover_state_(0);
+  this->estimated_odom_.pose.pose.position.y = acc_corrected_(1);//rover_state_(1);
+  this->estimated_odom_.pose.pose.position.z = acc_corrected_(2);//rover_state_(2);
   
   // Converting to quarternion to fill the ROS message
   tf::Quaternion quaternion = tf::createQuaternionFromRPY(rover_state_(6),
@@ -436,7 +441,7 @@ void EkfLooseIntegrationAlgNode::cb_imuData(const sensor_msgs::Imu::ConstPtr& IM
 
   current_timestamp_ = IMU_msg->header.stamp.sec + (IMU_msg->header.stamp.nsec * 1e-9);
 
-  if (flag_first_imu_msg_received_)
+  if (flag_imu_initialized_)
   {
     double previous_x = rover_state_(0);
     double previous_y = rover_state_(1);
@@ -503,7 +508,16 @@ void EkfLooseIntegrationAlgNode::cb_imuData(const sensor_msgs::Imu::ConstPtr& IM
 
   acc_corrected_ = acc_misaligment_ * acc_scale_factor_ * (acc_reading_ - acc_bias_);
 
-  acc_corrected_(2) += 9.8; // to cancel out the gravity vector
+  // Correcting gravity vector
+  //acc_corrected_(2) += 9.8; // to cancel out the gravity vector
+
+  double x_gravity_component = G_ * sin(rover_state_(7)); //pitch
+  double y_gravity_component = G_ * sin(rover_state_(6)); //roll
+  double z_gravity_component = sqrt( G_* G_  - x_gravity_component * x_gravity_component - y_gravity_component * y_gravity_component);
+
+  acc_corrected_(0) += x_gravity_component; //correcting pitch component
+  acc_corrected_(1) += y_gravity_component; //correcting roll component
+  acc_corrected_(2) += z_gravity_component;
 
   gyro_reading_(0) = IMU_msg->angular_velocity.x;
   gyro_reading_(1) = IMU_msg->angular_velocity.y;
@@ -513,7 +527,54 @@ void EkfLooseIntegrationAlgNode::cb_imuData(const sensor_msgs::Imu::ConstPtr& IM
 
   previous_timestamp_ = current_timestamp_;
 
-  if(!flag_first_imu_msg_received_) flag_first_imu_msg_received_ = true;
+  if(!flag_imu_initialized_)
+  {
+    number_of_imu_readings_++;
+    accumlator_acc_ += acc_misaligment_ * acc_scale_factor_ * (acc_reading_ - acc_bias_);
+
+    if(number_of_imu_readings_ >= number_of_imu_readings_for_initialization_ && !flag_imu_initialized_)
+    {
+      mean_init_acc_(0) = accumlator_acc_(0) / (float) number_of_imu_readings_;
+      mean_init_acc_(1) = accumlator_acc_(1) / (float) number_of_imu_readings_;
+      mean_init_acc_(2) = accumlator_acc_(2) / (float) number_of_imu_readings_;
+
+      std::cout << "Mean accelerations during initialization period = " << std::endl << mean_init_acc_ << std::endl;
+
+      double initial_roll  = atan2(mean_init_acc_(1), mean_init_acc_(2));
+      std::cout << "initial_roll = " << initial_roll << std::endl;
+      if ( initial_roll > 0.0 )
+      {
+        initial_roll -= M_PI;
+      }
+      else
+      {
+        initial_roll += M_PI;
+      }
+
+      double initial_pitch = atan2(mean_init_acc_(0), mean_init_acc_(2));
+      std::cout << "initial_pitch = " << initial_pitch << std::endl;
+      if ( initial_pitch > 0.0 )
+      {
+        initial_pitch -= M_PI;
+      }
+      else
+      {
+        initial_pitch += M_PI;
+      }
+
+      double initial_yaw   = 0.0; // yaw is not observable through the gravity vector
+
+      std::cout << "Initial roll angle in degrees = " << initial_roll * 180.0 / M_PI << std::endl
+          << "Initial pitch angle in degrees = " << initial_pitch * 180.0 / M_PI << std::endl;
+
+      rover_state_(6) = initial_roll;
+      rover_state_(7) = initial_pitch;
+      rover_state_(8) = initial_yaw;
+
+      flag_imu_initialized_ = true;
+    }
+
+  }
 
   this->alg_.unlock();
 }
