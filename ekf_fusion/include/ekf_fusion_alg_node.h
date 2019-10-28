@@ -50,19 +50,19 @@ private:
 
   ekf::KalmanConfiguration kalman_config_;
   CEkfPtr ekf_;
-  bool flag_send_pose;
-  bool flag_plot_pose;
-  geometry_msgs::PoseWithCovarianceStamped pose_plot_;
-  geometry_msgs::PoseWithCovarianceStamped pose_filtered_;
+  bool flag_corr_pose_;
+  bool flag_plot_pose_;
+  geometry_msgs::PoseWithCovarianceStamped plot_pose_;
+  geometry_msgs::PoseWithCovarianceStamped corr_pose_;
 
   // [publisher attributes]
-  ros::Publisher pose_publisher_;
-  ros::Publisher pose_plot_pub_;
+  ros::Publisher corr_pose_pub_;
+  ros::Publisher plot_pose_pub_;
 
   // [subscriber attributes]
   ros::Subscriber odom_gps_sub_;
   ros::Subscriber odom_raw_sub_;
-  ros::Subscriber amcl_pose_sub_;
+  ros::Subscriber slam_pose_sub_;
 
   /**
    * \brief callback for read pose messages

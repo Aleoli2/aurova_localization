@@ -11,17 +11,17 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
   this->kalman_config_.outlier_mahalanobis_threshold = 5.0;
   this->ekf_ = new CEkf(this->kalman_config_);
   this->loop_rate_ = 10; //in [Hz]
-  this->flag_send_pose = false;
-  this->flag_plot_pose = false;
+  this->flag_corr_pose_ = false;
+  this->flag_plot_pose_ = false;
 
   // [init publishers]
-  this->pose_publisher_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
+  this->corr_pose_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
       > ("/initialpose", 1);
-  this->pose_plot_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
-      > ("/initialpose_plot", 1);
+  this->plot_pose_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
+      > ("/pose_plot", 1);
 
   // [init subscribers]
-  this->amcl_pose_sub_ = this->public_node_handle_.subscribe("/amcl_pose", 1, &EkfFusionAlgNode::cb_getPoseMsg, this);
+  this->slam_pose_sub_ = this->public_node_handle_.subscribe("/amcl_pose", 1, &EkfFusionAlgNode::cb_getPoseMsg, this);
   this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg,
                                                             this);
   this->odom_raw_sub_ = this->public_node_handle_.subscribe("/odometry", 1, &EkfFusionAlgNode::cb_getRawOdomMsg, this);
@@ -49,15 +49,15 @@ void EkfFusionAlgNode::mainNodeThread(void)
   // [fill action structure and make request to the action server]
 
   // [publish messages]
-  if (this->flag_plot_pose)
+  if (this->flag_plot_pose_)
   {
-    this->pose_plot_pub_.publish(this->pose_plot_);
-    this->flag_plot_pose = false;
+    this->plot_pose_pub_.publish(this->plot_pose_);
+    this->flag_plot_pose_ = false;
   }
-  if (this->flag_send_pose)
+  if (this->flag_corr_pose_)
   {
-    this->pose_publisher_.publish(this->pose_filtered_);
-    this->flag_send_pose = false;
+    this->corr_pose_pub_.publish(this->corr_pose_);
+    this->flag_corr_pose_ = false;
   }
 }
 
@@ -68,8 +68,7 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
 
   ekf::SlamObservation obs;
   static int count = 0;
-
-  double var_max = 3 * 3, var_max_theta = 0.017 * 10 * 0.017 * 10; /// GET FROM PARAMETER !!!!
+  double var_max = 3 * 3, var_max_theta = 0.017 * 10 * 0.017 * 10; /// TODO: GET FROM PARAMETER !!!!
 
   //get yaw information
   tf::Quaternion q(pose_msg->pose.pose.orientation.x, pose_msg->pose.pose.orientation.y,
@@ -90,7 +89,9 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
       !isnan(obs.x) && !isnan(obs.y) && !isnan(obs.theta) && !isnan(obs.sigma_x) && !isnan(obs.sigma_y)
           && !isnan(obs.sigma_theta) && "Error in EkfFusionAlgNode::cb_getPoseMsg: nan value");
 
-  if (obs.sigma_x > var_max || obs.sigma_x > var_max || obs.sigma_theta > var_max_theta)
+  ///////////////////////////////////////////////////////////////////////////////////////////
+  ///// relocation correction for slam algorithim
+  if (obs.sigma_x > var_max && obs.sigma_y > var_max && obs.sigma_theta > var_max_theta)
   {
     Eigen::Matrix<double, 3, 1> state;
     Eigen::Matrix<double, 3, 3> covariance;
@@ -98,19 +99,19 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->ekf_->getStateAndCovariance(state, covariance);
 
     //update ros message structure
-    this->pose_filtered_.header.frame_id = "/map"; //load from parameter
+    this->corr_pose_.header.frame_id = "/map"; // TODO: load from parameter
     tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
-    this->pose_filtered_.pose.pose.position.x = state(0);
-    this->pose_filtered_.pose.pose.position.y = state(1);
-    this->pose_filtered_.pose.pose.orientation.x = quaternion[0];
-    this->pose_filtered_.pose.pose.orientation.y = quaternion[1];
-    this->pose_filtered_.pose.pose.orientation.z = quaternion[2];
-    this->pose_filtered_.pose.pose.orientation.w = quaternion[3];
-    this->pose_filtered_.pose.covariance = pose_msg->pose.covariance;
+    this->corr_pose_.pose.pose.position.x = state(0);
+    this->corr_pose_.pose.pose.position.y = state(1);
+    this->corr_pose_.pose.pose.orientation.x = quaternion[0];
+    this->corr_pose_.pose.pose.orientation.y = quaternion[1];
+    this->corr_pose_.pose.pose.orientation.z = quaternion[2];
+    this->corr_pose_.pose.pose.orientation.w = quaternion[3];
+    this->corr_pose_.pose.covariance = pose_msg->pose.covariance;
 
-    if (count % 4 == 0)
+    if (count % 8 == 0) // TODO: load from parameter
     {
-      this->flag_send_pose = true;
+      this->flag_corr_pose_ = true;
     }
 
     count++;
@@ -118,9 +119,11 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
   else
   {
     count = 0;
-  }
 
-  this->ekf_->update(obs);
+    // update filter with observation.
+    this->ekf_->update(obs);
+  }
+  ///////////////////////////////////////////////////////////////////////////////////////////
 
   this->alg_.unlock();
 }
@@ -153,10 +156,6 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
 
 void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom_msg)
 {
-  static double x_prev = 0.0;
-  static double y_prev = 0.0;
-  static double theta_prev = 0.0;
-
   this->alg_.lock();
 
   ekf::OdomAction act;
@@ -169,17 +168,21 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   m.getRPY(roll, pitch, yaw);
   yaw_use = yaw;
 
+  //initialization of static variables
+  static double x_prev = odom_msg->pose.pose.position.x;
+  static double y_prev = odom_msg->pose.pose.position.y;
+  static double theta_prev = yaw_use;
+
   //for differential problems
   if (yaw < -1 * PI / 2 && theta_prev > PI / 2)
     yaw_use = yaw_use + 2 * PI;
   else if (theta_prev < -1 * PI / 2 && yaw > PI / 2)
     theta_prev = theta_prev + 2 * PI;
 
-  //set observation
+  //set control action
   act.delta_x = odom_msg->pose.pose.position.x - x_prev;
   act.delta_y = odom_msg->pose.pose.position.y - y_prev;
   act.delta_theta = yaw_use - theta_prev;
-
   this->ekf_->predict(act);
 
   //for next step
@@ -187,31 +190,29 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   y_prev = odom_msg->pose.pose.position.y;
   theta_prev = yaw;
 
+  ////////////////////////////////////////////////////////////////////////////////
+  ///// update ros message structure for plot
   Eigen::Matrix<double, 3, 1> state;
   Eigen::Matrix<double, 3, 3> covariance;
-
   this->ekf_->getStateAndCovariance(state, covariance);
-
-  ////////////////////////////////////////////////////////////////////////////////
-  //update ros message structure
-  this->pose_plot_.header.frame_id = "/map"; //load from parameter
+  this->plot_pose_.header.frame_id = "/map"; //TODO: load from parameter
   tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
-  this->pose_plot_.pose.pose.position.x = state(0);
-  this->pose_plot_.pose.pose.position.y = state(1);
-  this->pose_plot_.pose.pose.orientation.x = quaternion[0];
-  this->pose_plot_.pose.pose.orientation.y = quaternion[1];
-  this->pose_plot_.pose.pose.orientation.z = quaternion[2];
-  this->pose_plot_.pose.pose.orientation.w = quaternion[3];
-  this->pose_plot_.pose.covariance[0] = covariance(0, 0);
-  this->pose_plot_.pose.covariance[1] = covariance(0, 1);
-  this->pose_plot_.pose.covariance[5] = covariance(0, 2);
-  this->pose_plot_.pose.covariance[6] = covariance(1, 0);
-  this->pose_plot_.pose.covariance[7] = covariance(1, 1);
-  this->pose_plot_.pose.covariance[11] = covariance(1, 2);
-  this->pose_plot_.pose.covariance[30] = covariance(2, 0);
-  this->pose_plot_.pose.covariance[31] = covariance(2, 1);
-  this->pose_plot_.pose.covariance[35] = covariance(2, 2);
-  this->flag_plot_pose = true;
+  this->plot_pose_.pose.pose.position.x = state(0);
+  this->plot_pose_.pose.pose.position.y = state(1);
+  this->plot_pose_.pose.pose.orientation.x = quaternion[0];
+  this->plot_pose_.pose.pose.orientation.y = quaternion[1];
+  this->plot_pose_.pose.pose.orientation.z = quaternion[2];
+  this->plot_pose_.pose.pose.orientation.w = quaternion[3];
+  this->plot_pose_.pose.covariance[0] = covariance(0, 0);
+  this->plot_pose_.pose.covariance[1] = covariance(0, 1);
+  this->plot_pose_.pose.covariance[5] = covariance(0, 2);
+  this->plot_pose_.pose.covariance[6] = covariance(1, 0);
+  this->plot_pose_.pose.covariance[7] = covariance(1, 1);
+  this->plot_pose_.pose.covariance[11] = covariance(1, 2);
+  this->plot_pose_.pose.covariance[30] = covariance(2, 0);
+  this->plot_pose_.pose.covariance[31] = covariance(2, 1);
+  this->plot_pose_.pose.covariance[35] = covariance(2, 2);
+  this->flag_plot_pose_ = true;
   ////////////////////////////////////////////////////////////////////////////////
 
   this->alg_.unlock();

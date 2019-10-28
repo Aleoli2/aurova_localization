@@ -5,7 +5,7 @@ CEkf::CEkf(ekf::KalmanConfiguration kalman_configuration)
   config_ = kalman_configuration;
 
   flag_ekf_initialised_ = false;
-  debug_ = true;
+  debug_ = false;
 
   //State vector
   X_(0, 0) = 0.0;
