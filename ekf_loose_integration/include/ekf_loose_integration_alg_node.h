@@ -22,14 +22,17 @@
 // refer to the IRI wiki page for more information:
 // http://wikiri.upc.es/index.php/Robotics_Lab
 
-#ifndef _wolf_fusion_alg_node_h_
-#define _wolf_fusion_alg_node_h_
+#ifndef _ekf_loose_integration_alg_node_h_
+#define _ekf_loose_integration_alg_node_h_
 
 #include <iri_base_algorithm/iri_base_algorithm.h>
-#include "wolf_fusion_alg.h"
-
-#include "core/common/wolf.h"
-#include "core/ceres_wrapper/ceres_manager.h"
+#include "ekf_loose_integration_alg.h"
+#include "ackermann_msgs/AckermannDriveStamped.h"
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
+#include "nav_msgs/Odometry.h"
+#include "sensor_msgs/Imu.h"
+#include <Eigen/Dense>
+#include "tf_conversions/tf_eigen.h"
 
 // [publisher subscriber headers]
 
@@ -41,12 +44,77 @@
  * \brief IRI ROS Specific Algorithm Class
  *
  */
-class WolfFusionAlgNode : public algorithm_base::IriBaseAlgorithm<WolfFusionAlgorithm>
+class EkfLooseIntegrationAlgNode : public algorithm_base::IriBaseAlgorithm<EkfLooseIntegrationAlgorithm>
 {
   private:
+
+    static const double G_ = 9.8;
+
+    Eigen::Matrix<double, 9, 1> rover_state_;
+
+    bool flag_imu_initialized_;
+    double previous_timestamp_;
+    double current_timestamp_;
+
+    int number_of_imu_readings_for_initialization_;
+    int number_of_imu_readings_;
+
+    Eigen::Vector3d accumlator_acc_;
+    Eigen::Vector3d mean_init_acc_;
+
+    geometry_msgs::PoseWithCovarianceStamped estimated_pose_;
+    ackermann_msgs::AckermannDriveStamped estimated_ackermann_state_;
+    nav_msgs::Odometry estimated_odom_;
+    sensor_msgs::Imu imu_;
+
+    Eigen::Vector3d acc_reading_;
+    Eigen::Vector3d acc_corrected_;
+
+    Eigen::Vector3d acc_bias_;
+    Eigen::Matrix3d acc_scale_factor_;
+    Eigen::Matrix3d acc_misaligment_;
+
+    Eigen::Vector3d gyro_reading_;
+    Eigen::Vector3d gyro_corrected_;
+
+    Eigen::Vector3d gyro_bias_;
+    Eigen::Matrix3d gyro_scale_factor_;
+    Eigen::Matrix3d gyro_misaligment_;
+
     // [publisher attributes]
+    ros::Publisher pose_publisher_;
+    ros::Publisher odom_publisher_;
 
     // [subscriber attributes]
+    ros::Subscriber odom_GNSS_sub_;
+    ros::Subscriber estimated_ackermann_subscriber_;
+    ros::Subscriber AMCL_pose_sub_;
+    ros::Subscriber imu_subscriber_;
+
+    /**
+     * \brief callback to read pose messages
+     * This message can be read from different localization sources by remapping in the
+     * execution of the node.
+     */
+    void cb_AMCLPose(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& pose_msg);
+
+    /**
+     * \brief callback to read odometry messages
+     * This message can be read from different localization sources by remapping in the
+     * execution of the node.
+     */
+    void cb_GNSSOdom(const nav_msgs::Odometry::ConstPtr& odom_msg);
+
+    /**
+     * \brief Callback to read ackermann messages.
+     */
+    void cb_ackermannState(const ackermann_msgs::AckermannDriveStamped::ConstPtr& estimated_ackermann_state_msg);
+
+
+    /**
+     * \brief Callback for read imu messages.
+     */
+    void cb_imuData(const sensor_msgs::Imu::ConstPtr& IMU_msg);
 
     // [service attributes]
 
@@ -70,7 +138,7 @@ class WolfFusionAlgNode : public algorithm_base::IriBaseAlgorithm<WolfFusionAlgo
     * This constructor initializes specific class attributes and all ROS
     * communications variables to enable message exchange.
     */
-    WolfFusionAlgNode(void);
+    EkfLooseIntegrationAlgNode(void);
 
    /**
     * \brief Destructor
@@ -78,7 +146,7 @@ class WolfFusionAlgNode : public algorithm_base::IriBaseAlgorithm<WolfFusionAlgo
     * This destructor frees all necessary dynamic memory allocated within this
     * this class.
     */
-    ~WolfFusionAlgNode(void);
+    ~EkfLooseIntegrationAlgNode(void);
 
   protected:
    /**
