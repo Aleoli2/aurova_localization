@@ -34,7 +34,6 @@
 #include <iri_base_algorithm/iri_base_algorithm.h>
 #include "pose_simulation_alg.h"
 
-
 // [publisher subscriber headers]
 
 // [service client headers]
@@ -51,7 +50,10 @@ private:
 
   float init_x_;
   float init_y_;
+  float init_z_;
   float init_w_;
+  float d_vehicle_;
+  struct Covariance st_covariance_;
   std::string frame_id_;
   std::string child_id_;
   tf::StampedTransform pose_current_;

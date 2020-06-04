@@ -34,6 +34,14 @@
 
 //include pose_simulation_alg main library
 
+struct Covariance
+{
+  float x;
+  float y;
+  float z;
+  float w;
+};
+
 /**
  * \brief IRI ROS Specific Driver Class
  *
@@ -153,6 +161,7 @@ public:
                             ackermann_msgs::AckermannDriveStamped ackermann_state,
                             geometry_msgs::PoseWithCovarianceStamped& pose_sim,
                             geometry_msgs::TransformStamped& pose_tf,
+                            struct Covariance st_cobariance, float d_vehicle,
                             std::string frame_id, std::string child_id);
 };
 

@@ -7,9 +7,15 @@ PoseSimulationAlgNode::PoseSimulationAlgNode(void) :
   this->loop_rate_ = 10; //in [Hz]
   this->public_node_handle_.getParam("/pose_simulation/frame_id", this->frame_id_);
   this->public_node_handle_.getParam("/pose_simulation/child_id", this->child_id_);
+  this->public_node_handle_.getParam("/pose_simulation/d_vehicle", this->d_vehicle_);
   this->public_node_handle_.getParam("/pose_simulation/init_x", this->init_x_);
   this->public_node_handle_.getParam("/pose_simulation/init_y", this->init_y_);
+  this->public_node_handle_.getParam("/pose_simulation/init_z", this->init_z_);
   this->public_node_handle_.getParam("/pose_simulation/init_w", this->init_w_);
+  this->public_node_handle_.getParam("/pose_simulation/var_x", this->st_covariance_.x);
+  this->public_node_handle_.getParam("/pose_simulation/var_y", this->st_covariance_.y);
+  this->public_node_handle_.getParam("/pose_simulation/var_z", this->st_covariance_.z);
+  this->public_node_handle_.getParam("/pose_simulation/var_w", this->st_covariance_.w);
 
   // init tf
   this->pose_tf_.header.frame_id = this->frame_id_.c_str();
@@ -17,7 +23,7 @@ PoseSimulationAlgNode::PoseSimulationAlgNode(void) :
   this->pose_tf_.header.stamp = ros::Time::now();
   this->pose_tf_.transform.translation.x = this->init_x_;
   this->pose_tf_.transform.translation.y = this->init_y_;
-  this->pose_tf_.transform.translation.z = 0.0;
+  this->pose_tf_.transform.translation.z = this->init_z_;
   this->pose_tf_.transform.rotation = tf::createQuaternionMsgFromYaw(this->init_w_);
   this->broadcaster_.sendTransform(this->pose_tf_);
 
@@ -26,14 +32,15 @@ PoseSimulationAlgNode::PoseSimulationAlgNode(void) :
   this->pose_sim_.header.frame_id = this->frame_id_.c_str();
   this->pose_sim_.pose.pose.position.x = this->init_x_;
   this->pose_sim_.pose.pose.position.y = this->init_y_;
-  this->pose_sim_.pose.pose.position.z = 0;
+  this->pose_sim_.pose.pose.position.z = this->init_z_;
   this->pose_sim_.pose.pose.orientation.x = quaternion[0];
   this->pose_sim_.pose.pose.orientation.y = quaternion[1];
   this->pose_sim_.pose.pose.orientation.z = quaternion[2];
   this->pose_sim_.pose.pose.orientation.w = quaternion[3];
-  this->pose_sim_.pose.covariance[0] = 0.5; // TODO: calculation of variances !!!
-  this->pose_sim_.pose.covariance[7] = 0.5;
-  this->pose_sim_.pose.covariance[35] = 0.5;
+  this->pose_sim_.pose.covariance[0] = this->st_covariance_.x;
+  this->pose_sim_.pose.covariance[7] = this->st_covariance_.y;
+  this->pose_sim_.pose.covariance[14] = this->st_covariance_.z;
+  this->pose_sim_.pose.covariance[35] = this->st_covariance_.w;
 
   // [init publishers]
   this->pose_publisher_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
@@ -92,8 +99,8 @@ void PoseSimulationAlgNode::cb_ackermannState(
     ros::Duration(1.0).sleep();
   }
 
-  this->alg_.generateNewPoseMsg2D(this->pose_current_, this->ackermann_state_, this->pose_sim_, this->pose_tf_,
-                                  this->frame_id_, this->child_id_);
+  this->alg_.generateNewPoseMsg2D(this->pose_current_, this->ackermann_state_, this->pose_sim_, this->pose_tf_, this->st_covariance_,
+                                  this->d_vehicle_, this->frame_id_, this->child_id_);
 
   this->broadcaster_.sendTransform(this->pose_tf_);
   this->pose_publisher_.publish(this->pose_sim_);

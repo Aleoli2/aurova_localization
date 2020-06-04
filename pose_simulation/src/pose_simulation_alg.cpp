@@ -25,12 +25,12 @@ void PoseSimulationAlgorithm::generateNewPoseMsg2D(tf::StampedTransform pose_cur
                                                    ackermann_msgs::AckermannDriveStamped ackermann_state,
                                                    geometry_msgs::PoseWithCovarianceStamped& pose_sim,
                                                    geometry_msgs::TransformStamped& pose_tf,
+                                                   struct Covariance st_cobariance, float d_vehicle,
                                                    std::string frame_id, std::string child_id)
 {
   static double t_1;
   static double t_2;
   static bool first_exec = true;
-  float d_vehicle = 1.08; // TODO: get from param and modify git .rm
 
   //calculate increment of time
   if (first_exec)
@@ -48,6 +48,7 @@ void PoseSimulationAlgorithm::generateNewPoseMsg2D(tf::StampedTransform pose_cur
   double w_current;
   double x_current = pose_current.getOrigin().x();
   double y_current = pose_current.getOrigin().y();
+  double z_current = pose_current.getOrigin().z();
   tf::Quaternion quaternion_aux(pose_current.getRotation().x(), pose_current.getRotation().y(),
                                 pose_current.getRotation().z(), pose_current.getRotation().w());
   tf::Matrix3x3 matrix(quaternion_aux);
@@ -72,14 +73,15 @@ void PoseSimulationAlgorithm::generateNewPoseMsg2D(tf::StampedTransform pose_cur
   pose_sim.header.frame_id = frame_id.c_str();
   pose_sim.pose.pose.position.x = pose_x;
   pose_sim.pose.pose.position.y = pose_y;
-  pose_sim.pose.pose.position.z = 0;
+  pose_sim.pose.pose.position.z = z_current;
   pose_sim.pose.pose.orientation.x = quaternion[0];
   pose_sim.pose.pose.orientation.y = quaternion[1];
   pose_sim.pose.pose.orientation.z = quaternion[2];
   pose_sim.pose.pose.orientation.w = quaternion[3];
-  pose_sim.pose.covariance[0] = 0.5; // TODO: calculation of variances !!!
-  pose_sim.pose.covariance[7] = 0.5;
-  pose_sim.pose.covariance[35] = 0.5;
+  pose_sim.pose.covariance[0] = st_cobariance.x;
+  pose_sim.pose.covariance[7] = st_cobariance.y;
+  pose_sim.pose.covariance[14] = st_cobariance.z;
+  pose_sim.pose.covariance[35] = st_cobariance.w;
   /////////////////////////////////////////////////
 
   ////////////////////////////////////////////////////////////////
@@ -89,7 +91,7 @@ void PoseSimulationAlgorithm::generateNewPoseMsg2D(tf::StampedTransform pose_cur
   pose_tf.header.stamp = ros::Time::now();
   pose_tf.transform.translation.x = pose_x;
   pose_tf.transform.translation.y = pose_y;
-  pose_tf.transform.translation.z = 0.0;
+  pose_tf.transform.translation.z = z_current;
   pose_tf.transform.rotation = tf::createQuaternionMsgFromYaw(pose_yaw);
   ////////////////////////////////////////////////////////////////
 
