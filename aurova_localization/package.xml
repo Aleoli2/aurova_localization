@@ -49,7 +49,6 @@
   <!-- Use doc_depend for packages you need only for building documentation: -->
   <!--   <doc_depend>doxygen</doc_depend> -->
   <exec_depend>ekf_fusion</exec_depend>
-  <exec_depend>wolf_fusion</exec_depend>
   <exec_depend>ekf_loose_integration</exec_depend>
   <exec_depend>pose_simulation</exec_depend>
 
