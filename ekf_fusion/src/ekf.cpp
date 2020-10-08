@@ -86,7 +86,17 @@ double CEkf::update(ekf::GnssObservation obs)
   double mahalanobis_distance = INVALID_DISTANCE;
   double likelihood = INVALID_DISTANCE;
 
-  if (flag_ekf_initialised_)
+  if (!flag_ekf_initialised_)
+  {
+    X_(0) = obs.x;
+    X_(1) = obs.y;
+    X_(2) = obs.theta;
+    P_(0, 0) = obs.sigma_x * 100; // initial value for x variance;
+    P_(1, 1) = obs.sigma_y * 100; // initial value for y variance
+    P_(2, 2) = obs.sigma_theta * 100; // initial value for orientation variance
+    flag_ekf_initialised_ = true;
+  }
+  else
   {
     //Filling the observation vector
     Eigen::Matrix<double, 3, 1> y;

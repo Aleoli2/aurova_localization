@@ -24,7 +24,7 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
   this->slam_pose_sub_ = this->public_node_handle_.subscribe("/amcl_pose", 1, &EkfFusionAlgNode::cb_getPoseMsg, this);
   this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg,
                                                             this);
-  this->odom_raw_sub_ = this->public_node_handle_.subscribe("/odometry", 1, &EkfFusionAlgNode::cb_getRawOdomMsg, this);
+  this->odom_raw_sub_ = this->public_node_handle_.subscribe("/odom", 1, &EkfFusionAlgNode::cb_getRawOdomMsg, this);
 
   // [init services]
 
@@ -99,7 +99,7 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->ekf_->getStateAndCovariance(state, covariance);
 
     //update ros message structure
-    this->corr_pose_.header.frame_id = "/map"; // TODO: load from parameter
+    this->corr_pose_.header.frame_id = "odom"; // TODO: load from parameter
     tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
     this->corr_pose_.pose.pose.position.x = state(0);
     this->corr_pose_.pose.pose.position.y = state(1);
@@ -148,7 +148,7 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   obs.sigma_x = odom_msg->pose.covariance[0];
   obs.sigma_y = odom_msg->pose.covariance[7];
   obs.sigma_theta = odom_msg->pose.covariance[35];
-
+  
   this->ekf_->update(obs);
 
   this->alg_.unlock();
@@ -195,7 +195,7 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   Eigen::Matrix<double, 3, 1> state;
   Eigen::Matrix<double, 3, 3> covariance;
   this->ekf_->getStateAndCovariance(state, covariance);
-  this->plot_pose_.header.frame_id = "/map"; //TODO: load from parameter
+  this->plot_pose_.header.frame_id = "odom"; //TODO: load from parameter
   tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
   this->plot_pose_.pose.pose.position.x = state(0);
   this->plot_pose_.pose.pose.position.y = state(1);
