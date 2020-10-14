@@ -99,7 +99,7 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->ekf_->getStateAndCovariance(state, covariance);
 
     //update ros message structure
-    this->corr_pose_.header.frame_id = "odom"; // TODO: load from parameter
+    this->corr_pose_.header.frame_id = "map"; // TODO: load from parameter
     tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
     this->corr_pose_.pose.pose.position.x = state(0);
     this->corr_pose_.pose.pose.position.y = state(1);
@@ -195,7 +195,7 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   Eigen::Matrix<double, 3, 1> state;
   Eigen::Matrix<double, 3, 3> covariance;
   this->ekf_->getStateAndCovariance(state, covariance);
-  this->plot_pose_.header.frame_id = "odom"; //TODO: load from parameter
+  this->plot_pose_.header.frame_id = "map"; //TODO: load from parameter
   tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
   this->plot_pose_.pose.pose.position.x = state(0);
   this->plot_pose_.pose.pose.position.y = state(1);
@@ -213,6 +213,57 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   this->plot_pose_.pose.covariance[31] = covariance(2, 1);
   this->plot_pose_.pose.covariance[35] = covariance(2, 2);
   this->flag_plot_pose_ = true;
+  ////////////////////////////////////////////////////////////////////////////////
+  
+  ////////////////////////////////////////////////////////////////////////////////
+  ///// generate map -> odom transform
+  geometry_msgs::PointStamped pos_odom;
+  geometry_msgs::PointStamped pos_base;
+  pos_odom.header.frame_id = "odom"; //TODO: from param
+  pos_odom.header.stamp = ros::Time(0); //ros::Time::now();
+  pos_odom.point.x = state(0);
+  pos_odom.point.y = state(1);
+  pos_odom.point.z = 0.0;
+  try
+  {
+    this->listener_.transformPoint("base_link", pos_odom, pos_base);
+  }
+  catch (tf::TransformException& ex)
+  {
+    ROS_WARN("[draw_frames] TF exception:\n%s", ex.what());
+    return;
+  }
+  geometry_msgs::QuaternionStamped orient_base;
+  geometry_msgs::QuaternionStamped orient_odom;
+  orient_odom.header.frame_id = "odom"; //TODO: from param
+  orient_odom.header.stamp = ros::Time(0);
+  orient_odom.quaternion.x =  quaternion[0];
+  orient_odom.quaternion.y =  quaternion[1];
+  orient_odom.quaternion.z =  quaternion[2];
+  orient_odom.quaternion.w =  quaternion[3];
+  try
+  {
+    this->listener_.transformQuaternion("base_link", orient_odom, orient_base);
+
+  }
+  catch (tf::TransformException& ex)
+  {
+    ROS_WARN("[draw_frames] TF exception:\n%s", ex.what());
+    return;
+  }
+  
+  this->odom_to_map_.header.frame_id = "map";
+  this->odom_to_map_.child_frame_id = "odom";
+  this->odom_to_map_.header.stamp = ros::Time::now();
+  this->odom_to_map_.transform.translation.x = 0.0;//pos_base.point.x;
+  this->odom_to_map_.transform.translation.y = 0.0;//pos_base.point.y;
+  this->odom_to_map_.transform.translation.z = 0.0;
+  this->odom_to_map_.transform.rotation.x = 0.0;//orient_base.quaternion.x;
+  this->odom_to_map_.transform.rotation.y = 0.0;//orient_base.quaternion.y;
+  this->odom_to_map_.transform.rotation.z = 0.0;//orient_base.quaternion.z;
+  this->odom_to_map_.transform.rotation.w = 1.0;//orient_base.quaternion.w;
+  
+  this->broadcaster_.sendTransform(this->odom_to_map_);
   ////////////////////////////////////////////////////////////////////////////////
 
   this->alg_.unlock();

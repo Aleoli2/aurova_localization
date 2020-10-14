@@ -54,6 +54,9 @@ private:
   bool flag_plot_pose_;
   geometry_msgs::PoseWithCovarianceStamped plot_pose_;
   geometry_msgs::PoseWithCovarianceStamped corr_pose_;
+  geometry_msgs::TransformStamped odom_to_map_;
+  tf::TransformBroadcaster broadcaster_;
+  tf::TransformListener listener_;
 
   // [publisher attributes]
   ros::Publisher corr_pose_pub_;
