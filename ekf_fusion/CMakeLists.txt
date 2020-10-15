@@ -3,10 +3,11 @@ project(ekf_fusion)
 
 ## Find catkin macros and libraries
 find_package(catkin REQUIRED)
+FIND_PACKAGE(Eigen3 REQUIRED)
 # ******************************************************************** 
 #                 Add catkin additional components here
 # ******************************************************************** 
-find_package(catkin REQUIRED COMPONENTS iri_base_algorithm tf)
+find_package(catkin REQUIRED COMPONENTS iri_base_algorithm tf eigen_conversions tf_conversions)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -65,7 +66,7 @@ catkin_package(
 # ******************************************************************** 
 #      Add system and labrobotica run time dependencies here
 # ******************************************************************** 
-#  DEPENDS 
+  DEPENDS Eigen
 )
 
 ###########
@@ -78,6 +79,7 @@ catkin_package(
 include_directories(include)
 include_directories(${catkin_INCLUDE_DIRS})
 include_directories(${PCL_INCLUDE_DIRS})
+include_directories(${EIGEN_INCLUDE_DIRS})
 # include_directories(${<dependency>_INCLUDE_DIR})
 
 ## Declare a cpp library

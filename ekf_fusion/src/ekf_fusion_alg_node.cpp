@@ -217,51 +217,48 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   
   ////////////////////////////////////////////////////////////////////////////////
   ///// generate map -> odom transform
-  geometry_msgs::PointStamped pos_odom;
-  geometry_msgs::PointStamped pos_base;
-  pos_odom.header.frame_id = "odom"; //TODO: from param
-  pos_odom.header.stamp = ros::Time(0); //ros::Time::now();
-  pos_odom.point.x = state(0);
-  pos_odom.point.y = state(1);
-  pos_odom.point.z = 0.0;
+  tf::StampedTransform tf_odom2base;
   try
   {
-    this->listener_.transformPoint("base_link", pos_odom, pos_base);
+    this->listener_.lookupTransform("odom", "base_link", ros::Time(0), tf_odom2base);
   }
   catch (tf::TransformException& ex)
   {
     ROS_WARN("[draw_frames] TF exception:\n%s", ex.what());
-    return;
   }
-  geometry_msgs::QuaternionStamped orient_base;
-  geometry_msgs::QuaternionStamped orient_odom;
-  orient_odom.header.frame_id = "odom"; //TODO: from param
-  orient_odom.header.stamp = ros::Time(0);
-  orient_odom.quaternion.x =  quaternion[0];
-  orient_odom.quaternion.y =  quaternion[1];
-  orient_odom.quaternion.z =  quaternion[2];
-  orient_odom.quaternion.w =  quaternion[3];
-  try
-  {
-    this->listener_.transformQuaternion("base_link", orient_odom, orient_base);
-
-  }
-  catch (tf::TransformException& ex)
-  {
-    ROS_WARN("[draw_frames] TF exception:\n%s", ex.what());
-    return;
-  }
+  
+  // generate 4x4 transform matrix odom2base
+  Eigen::Affine3d af_odom2base;
+  tf::transformTFToEigen(tf_odom2base, af_odom2base);
+  Eigen::Matrix4d tr_odom2base;
+  tr_odom2base.setIdentity();
+  tr_odom2base.block<3,3>(0,0) = af_odom2base.linear();
+  tr_odom2base.block<3,1>(0,3) = af_odom2base.translation();
+  
+  // generate 4x4 transform matrix map2base
+  Eigen::Matrix4d tr_map2base;
+  tr_map2base.setIdentity();
+  Eigen::Quaterniond rot(quaternion[3], quaternion[0], quaternion[1], quaternion[2]); 
+  tr_map2base.block<3,3>(0,0) = rot.toRotationMatrix();
+  tr_map2base.block<3,1>(0,3) = Eigen::Vector3d(state(0), state(1), 0.0);
+  
+  // given: odom2base * map2odom = map2base
+  // thenn: map2odom = map2base * odom2base^(-1)
+  Eigen::Matrix4d tr_map2odom;
+  tr_map2odom = tr_map2base * tr_odom2base.inverse() ;
+  
+  Eigen::Quaterniond quat_final(tr_map2odom.block<3,3>(0,0));
   
   this->odom_to_map_.header.frame_id = "map";
   this->odom_to_map_.child_frame_id = "odom";
   this->odom_to_map_.header.stamp = ros::Time::now();
-  this->odom_to_map_.transform.translation.x = 0.0;//pos_base.point.x;
-  this->odom_to_map_.transform.translation.y = 0.0;//pos_base.point.y;
+  this->odom_to_map_.transform.translation.x = tr_map2odom(0,3);
+  this->odom_to_map_.transform.translation.y = tr_map2odom(1,3);
   this->odom_to_map_.transform.translation.z = 0.0;
-  this->odom_to_map_.transform.rotation.x = 0.0;//orient_base.quaternion.x;
-  this->odom_to_map_.transform.rotation.y = 0.0;//orient_base.quaternion.y;
-  this->odom_to_map_.transform.rotation.z = 0.0;//orient_base.quaternion.z;
-  this->odom_to_map_.transform.rotation.w = 1.0;//orient_base.quaternion.w;
+  this->odom_to_map_.transform.rotation.x = quat_final.x();
+  this->odom_to_map_.transform.rotation.y = quat_final.y();
+  this->odom_to_map_.transform.rotation.z = quat_final.z();
+  this->odom_to_map_.transform.rotation.w = quat_final.w();
   
   this->broadcaster_.sendTransform(this->odom_to_map_);
   ////////////////////////////////////////////////////////////////////////////////

@@ -39,6 +39,9 @@
 #include "nav_msgs/Odometry.h"
 #include "ekf.h"
 #include "ackermann_msgs/AckermannDriveStamped.h"
+#include "tf_conversions/tf_eigen.h"
+#include <eigen_conversions/eigen_msg.h>
+#include <Eigen/Dense>
 
 
 //include ekf_fusion_alg main library
