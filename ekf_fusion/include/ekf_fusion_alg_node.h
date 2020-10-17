@@ -52,6 +52,8 @@ private:
   CEkfPtr ekf_;
   bool flag_corr_pose_;
   bool flag_plot_pose_;
+  std::string frame_id_;
+  std::string child_id_;
   geometry_msgs::PoseWithCovarianceStamped plot_pose_;
   geometry_msgs::PoseWithCovarianceStamped corr_pose_;
   geometry_msgs::TransformStamped odom_to_map_;

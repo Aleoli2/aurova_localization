@@ -5,14 +5,16 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
 {
 
   //init class attributes if necessary
-  this->kalman_config_.x_model = 0.05; //0.016 / 9
-  this->kalman_config_.y_model = 0.05;
-  this->kalman_config_.theta_model = 0.01; //0.00037
-  this->kalman_config_.outlier_mahalanobis_threshold = 5.0;
-  this->ekf_ = new CEkf(this->kalman_config_);
   this->loop_rate_ = 10; //in [Hz]
   this->flag_corr_pose_ = false;
   this->flag_plot_pose_ = false;
+  this->public_node_handle_.getParam("/ekf_fusion/frame_id", this->frame_id_);
+  this->public_node_handle_.getParam("/ekf_fusion/child_id", this->child_id_);
+  this->public_node_handle_.getParam("/ekf_fusion/x_model", this->kalman_config_.x_model);
+  this->public_node_handle_.getParam("/ekf_fusion/y_model", this->kalman_config_.y_model);
+  this->public_node_handle_.getParam("/ekf_fusion/theta_model", this->kalman_config_.theta_model);
+  this->public_node_handle_.getParam("/ekf_fusion/outlier_mahalanobis", this->kalman_config_.outlier_mahalanobis_threshold);
+  this->ekf_ = new CEkf(this->kalman_config_);
 
   // [init publishers]
   this->corr_pose_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
@@ -99,7 +101,7 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
     this->ekf_->getStateAndCovariance(state, covariance);
 
     //update ros message structure
-    this->corr_pose_.header.frame_id = "map"; // TODO: load from parameter
+    this->corr_pose_.header.frame_id = this->frame_id_;
     tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
     this->corr_pose_.pose.pose.position.x = state(0);
     this->corr_pose_.pose.pose.position.y = state(1);
@@ -195,7 +197,7 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   Eigen::Matrix<double, 3, 1> state;
   Eigen::Matrix<double, 3, 3> covariance;
   this->ekf_->getStateAndCovariance(state, covariance);
-  this->plot_pose_.header.frame_id = "map"; //TODO: load from parameter
+  this->plot_pose_.header.frame_id = this->frame_id_; 
   tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
   this->plot_pose_.pose.pose.position.x = state(0);
   this->plot_pose_.pose.pose.position.y = state(1);
@@ -216,11 +218,11 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   ////////////////////////////////////////////////////////////////////////////////
   
   ////////////////////////////////////////////////////////////////////////////////
-  ///// generate map -> odom transform
+  ///// generate frame -> child transform
   tf::StampedTransform tf_odom2base;
   try
   {
-    this->listener_.lookupTransform("odom", "base_link", ros::Time(0), tf_odom2base);
+    this->listener_.lookupTransform(this->child_id_, "base_link", ros::Time(0), tf_odom2base);
   }
   catch (tf::TransformException& ex)
   {
@@ -249,8 +251,8 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   
   Eigen::Quaterniond quat_final(tr_map2odom.block<3,3>(0,0));
   
-  this->odom_to_map_.header.frame_id = "map";
-  this->odom_to_map_.child_frame_id = "odom";
+  this->odom_to_map_.header.frame_id = this->frame_id_;
+  this->odom_to_map_.child_frame_id = this->child_id_;
   this->odom_to_map_.header.stamp = ros::Time::now();
   this->odom_to_map_.transform.translation.x = tr_map2odom(0,3);
   this->odom_to_map_.transform.translation.y = tr_map2odom(1,3);
