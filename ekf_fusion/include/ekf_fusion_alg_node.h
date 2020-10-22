@@ -56,6 +56,7 @@ private:
   std::string child_id_;
   geometry_msgs::PoseWithCovarianceStamped plot_pose_;
   geometry_msgs::PoseWithCovarianceStamped corr_pose_;
+  geometry_msgs::PoseWithCovarianceStamped init_pose_;
   geometry_msgs::TransformStamped odom_to_map_;
   tf::TransformBroadcaster broadcaster_;
   tf::TransformListener listener_;
@@ -68,6 +69,7 @@ private:
   ros::Subscriber odom_gps_sub_;
   ros::Subscriber odom_raw_sub_;
   ros::Subscriber slam_pose_sub_;
+  ros::Subscriber init_pose_sub_;
 
   /**
    * \brief callback for read pose messages
@@ -75,6 +77,13 @@ private:
    * execution of the node.
    */
   void cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& pose_msg);
+  
+  /**
+   * \brief callback for read initial pose messages
+   * This message can be read from different localization sources by remapping in the
+   * execution of the node.
+   */
+  void cb_getInitPoseMsg(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& init_msg);
 
   /**
    * \brief callback for read odometry messages

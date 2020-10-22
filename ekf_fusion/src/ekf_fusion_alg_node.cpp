@@ -24,6 +24,7 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
 
   // [init subscribers]
   this->slam_pose_sub_ = this->public_node_handle_.subscribe("/amcl_pose", 1, &EkfFusionAlgNode::cb_getPoseMsg, this);
+  this->init_pose_sub_ = this->public_node_handle_.subscribe("/initialpose", 1, &EkfFusionAlgNode::cb_getInitPoseMsg, this);
   this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg,
                                                             this);
   this->odom_raw_sub_ = this->public_node_handle_.subscribe("/odom", 1, &EkfFusionAlgNode::cb_getRawOdomMsg, this);
@@ -127,6 +128,32 @@ void EkfFusionAlgNode::cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStam
   }
   ///////////////////////////////////////////////////////////////////////////////////////////
 
+  this->alg_.unlock();
+}
+
+void EkfFusionAlgNode::cb_getInitPoseMsg(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& init_msg)
+{
+  this->alg_.lock();
+  
+  ekf::GnssObservation obs;
+
+  //get yaw information
+  tf::Quaternion q(init_msg->pose.pose.orientation.x, init_msg->pose.pose.orientation.y,
+                   init_msg->pose.pose.orientation.z, init_msg->pose.pose.orientation.w);
+  tf::Matrix3x3 m(q);
+  double roll, pitch, yaw;
+  m.getRPY(roll, pitch, yaw);
+
+  //set observation
+  obs.x = init_msg->pose.pose.position.x;
+  obs.y = init_msg->pose.pose.position.y;
+  obs.theta = yaw;
+  obs.sigma_x = init_msg->pose.covariance[0];
+  obs.sigma_y = init_msg->pose.covariance[7];
+  obs.sigma_theta = init_msg->pose.covariance[35];
+  
+  this->ekf_->update(obs);
+  
   this->alg_.unlock();
 }
 
