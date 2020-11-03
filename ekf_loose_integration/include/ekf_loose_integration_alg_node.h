@@ -33,6 +33,7 @@
 #include "sensor_msgs/Imu.h"
 #include <Eigen/Dense>
 #include "tf_conversions/tf_eigen.h"
+#include <XmlRpcException.h>
 
 // [publisher subscriber headers]
 

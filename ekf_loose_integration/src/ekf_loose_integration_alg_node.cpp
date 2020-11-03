@@ -1,5 +1,4 @@
 #include "ekf_loose_integration_alg_node.h"
-#include <XmlRpcException.h>
 
 EkfLooseIntegrationAlgNode::EkfLooseIntegrationAlgNode(void) :
   algorithm_base::IriBaseAlgorithm<EkfLooseIntegrationAlgorithm>()
