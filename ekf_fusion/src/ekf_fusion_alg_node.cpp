@@ -283,7 +283,7 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   this->odom_to_map_.header.stamp = ros::Time::now();
   this->odom_to_map_.transform.translation.x = tr_map2odom(0,3);
   this->odom_to_map_.transform.translation.y = tr_map2odom(1,3);
-  this->odom_to_map_.transform.translation.z = 0.0;
+  this->odom_to_map_.transform.translation.z = tr_map2odom(2,3);
   this->odom_to_map_.transform.rotation.x = quat_final.x();
   this->odom_to_map_.transform.rotation.y = quat_final.y();
   this->odom_to_map_.transform.rotation.z = quat_final.z();
