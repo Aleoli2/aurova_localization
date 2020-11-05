@@ -55,10 +55,11 @@ private:
 
   double wheelbase_;
 
-  bool flag_ekf_initialised_;
   bool debug_;
 
 public:
+
+  bool flag_ekf_initialised_;
 
   CEkf(ekf::KalmanConfiguration kalman_configuration);
 
