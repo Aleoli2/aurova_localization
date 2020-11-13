@@ -169,6 +169,12 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   tf::Matrix3x3 m(q);
   double roll, pitch, yaw;
   m.getRPY(roll, pitch, yaw);
+  
+  //// discard gps yaw (for sim case) in real case TODO: remove
+  Eigen::Matrix<double, 3, 1> state;
+  Eigen::Matrix<double, 3, 3> covariance;
+  this->ekf_->getStateAndCovariance(state, covariance);
+  yaw = state(2);
 
   //set observation
   obs.x = odom_msg->pose.pose.position.x;
@@ -183,8 +189,6 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   
   ////////////////////////////////////////////////////////////////////////////////
   ///// generate frame -> child transform
-  Eigen::Matrix<double, 3, 1> state;
-  Eigen::Matrix<double, 3, 3> covariance;
   this->ekf_->getStateAndCovariance(state, covariance);
   tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
   tf::StampedTransform tf_odom2base;
@@ -310,7 +314,8 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
 
     act.delta_x = x_frame - x_frame_prev;
     act.delta_y = y_frame - y_frame_prev;
-    act.delta_theta = yaw_use - theta_prev;
+    // use yaw of odom directly (for sim case), in rea case TODO: return to differential
+    act.delta_theta = yaw; //yaw_use - theta_prev;
     this->ekf_->predict(act);
   
     /*static int iteration = 0;

@@ -66,7 +66,8 @@ void CEkf::predict(ekf::OdomAction act)
     u(2) = act.delta_theta;
     X_(0) = X_(0) + u(0);
     X_(1) = X_(1) + u(1);
-    X_(2) = X_(2) + u(2);
+    // use yaw of odom directly (for sim case), in rea case TODO: return to differential
+    X_(2) = u(2); // X_(2) + u(2);
 
     //angle correction
     if (X_(2) > PI)
