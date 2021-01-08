@@ -17,16 +17,13 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
   this->ekf_ = new CEkf(this->kalman_config_);
 
   // [init publishers]
-  this->corr_pose_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
-      > ("/initialpose", 1);
-  this->plot_pose_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
-      > ("/pose_plot", 1);
+  this->corr_pose_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped > ("/initialpose", 1);
+  this->plot_pose_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped > ("/pose_plot", 1);
 
   // [init subscribers]
   this->slam_pose_sub_ = this->public_node_handle_.subscribe("/amcl_pose", 1, &EkfFusionAlgNode::cb_getPoseMsg, this);
   this->init_pose_sub_ = this->public_node_handle_.subscribe("/initialpose", 1, &EkfFusionAlgNode::cb_getInitPoseMsg, this);
-  this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg,
-                                                            this);
+  this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg, this);
   this->odom_raw_sub_ = this->public_node_handle_.subscribe("/odom", 1, &EkfFusionAlgNode::cb_getRawOdomMsg, this);
 
   // [init services]
@@ -169,12 +166,6 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   tf::Matrix3x3 m(q);
   double roll, pitch, yaw;
   m.getRPY(roll, pitch, yaw);
-  
-  //// discard gps yaw (for sim case) in real case TODO: remove
-  Eigen::Matrix<double, 3, 1> state;
-  Eigen::Matrix<double, 3, 3> covariance;
-  this->ekf_->getStateAndCovariance(state, covariance);
-  yaw = state(2);
 
   //set observation
   obs.x = odom_msg->pose.pose.position.x;
@@ -189,6 +180,8 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
   
   ////////////////////////////////////////////////////////////////////////////////
   ///// generate frame -> child transform
+  Eigen::Matrix<double, 3, 1> state;
+  Eigen::Matrix<double, 3, 3> covariance;
   this->ekf_->getStateAndCovariance(state, covariance);
   tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
   tf::StampedTransform tf_odom2base;
@@ -314,15 +307,8 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
 
     act.delta_x = x_frame - x_frame_prev;
     act.delta_y = y_frame - y_frame_prev;
-    // use yaw of odom directly (for sim case), in rea case TODO: return to differential
-    act.delta_theta = yaw; //yaw_use - theta_prev;
+    act.delta_theta = yaw_use - theta_prev;
     this->ekf_->predict(act);
-  
-    /*static int iteration = 0;
-    ROS_INFO("n: %d", iteration);
-    ROS_INFO("x_frame: %f, x_frame_prev %f", x_frame, x_frame_prev);
-    ROS_INFO("y_frame: %f, y_frame_prev %f", y_frame, y_frame_prev);
-    iteration = iteration + 1;*/
 
     //for next step
     x_prev = odom_msg->pose.pose.position.x;
@@ -331,7 +317,7 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
 
     ////////////////////////////////////////////////////////////////////////////////
     ///// update ros message structure for plot
-   Eigen::Matrix<double, 3, 1> state;
+    Eigen::Matrix<double, 3, 1> state;
     Eigen::Matrix<double, 3, 3> covariance;
     this->ekf_->getStateAndCovariance(state, covariance);
     this->plot_pose_.header.frame_id = this->frame_id_; 
@@ -353,7 +339,7 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr& odom
     ///// generate frame -> child transform
     tf::StampedTransform tf_odom2base;
     try
-  {
+  	{
       this->listener_.lookupTransform(this->child_id_, "base_link", ros::Time(0), tf_odom2base);
     }
     catch (tf::TransformException& ex)
