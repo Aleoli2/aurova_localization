@@ -141,15 +141,73 @@ void EkfFusionAlgNode::cb_getInitPoseMsg(const geometry_msgs::PoseWithCovariance
   double roll, pitch, yaw;
   m.getRPY(roll, pitch, yaw);
 
-  //set observation
-  obs.x = init_msg->pose.pose.position.x;
-  obs.y = init_msg->pose.pose.position.y;
-  obs.theta = yaw;
-  obs.sigma_x = init_msg->pose.covariance[0];
-  obs.sigma_y = init_msg->pose.covariance[7];
-  obs.sigma_theta = init_msg->pose.covariance[35];
+  // set observation
+  //obs.x = init_msg->pose.pose.position.x;
+  //obs.y = init_msg->pose.pose.position.y;
+  //obs.theta = yaw;
+  //obs.sigma_x = init_msg->pose.covariance[0];
+  //obs.sigma_y = init_msg->pose.covariance[7];
+  //obs.sigma_theta = init_msg->pose.covariance[35];
   
-  this->ekf_->update(obs);
+  //this->ekf_->update(obs);
+  
+  // set manual state
+  Eigen::Matrix<double, 3, 1> state;
+  Eigen::Matrix<double, 3, 3> covariance;
+  this->ekf_->getStateAndCovariance(state, covariance);
+  state(0) =  init_msg->pose.pose.position.x;
+  state(1) =  init_msg->pose.pose.position.y;
+  state(2) =  yaw;
+  this->ekf_->setStateAndCovariance(state, covariance);
+  
+  ////////////////////////////////////////////////////////////////////////////////
+  ///// generate frame -> child transform
+  tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
+  tf::StampedTransform tf_odom2base;
+  try
+  {
+    this->listener_.lookupTransform(this->child_id_, "base_link", ros::Time(0), tf_odom2base);
+  }
+  catch (tf::TransformException& ex)
+  {
+    ROS_WARN("[draw_frames] TF exception:\n%s", ex.what());
+  }
+  
+  // generate 4x4 transform matrix odom2base
+  Eigen::Affine3d af_odom2base;
+  tf::transformTFToEigen(tf_odom2base, af_odom2base);
+  Eigen::Matrix4d tr_odom2base;
+  tr_odom2base.setIdentity();
+  tr_odom2base.block<3,3>(0,0) = af_odom2base.linear();
+  tr_odom2base.block<3,1>(0,3) = af_odom2base.translation();
+  
+  // generate 4x4 transform matrix map2base
+  Eigen::Matrix4d tr_map2base;
+  tr_map2base.setIdentity();
+  Eigen::Quaterniond rot(quaternion[3], quaternion[0], quaternion[1], quaternion[2]); 
+  tr_map2base.block<3,3>(0,0) = rot.toRotationMatrix();
+  tr_map2base.block<3,1>(0,3) = Eigen::Vector3d(state(0), state(1), 0.0);
+  
+  // given: odom2base * map2odom = map2base
+  // thenn: map2odom = map2base * odom2base^(-1)
+  Eigen::Matrix4d tr_map2odom;
+  tr_map2odom = tr_map2base * tr_odom2base.inverse() ;
+  
+  Eigen::Quaterniond quat_final(tr_map2odom.block<3,3>(0,0));
+  
+  this->odom_to_map_.header.frame_id = this->frame_id_;
+  this->odom_to_map_.child_frame_id = this->child_id_;
+  this->odom_to_map_.header.stamp = ros::Time::now();
+  this->odom_to_map_.transform.translation.x = tr_map2odom(0,3);
+  this->odom_to_map_.transform.translation.y = tr_map2odom(1,3);
+  this->odom_to_map_.transform.translation.z = tr_map2odom(2,3);
+  this->odom_to_map_.transform.rotation.x = quat_final.x();
+  this->odom_to_map_.transform.rotation.y = quat_final.y();
+  this->odom_to_map_.transform.rotation.z = quat_final.z();
+  this->odom_to_map_.transform.rotation.w = quat_final.w();
+  
+  this->broadcaster_.sendTransform(this->odom_to_map_);
+  ////////////////////////////////////////////////////////////////////////////////
   
   this->alg_.unlock();
 }

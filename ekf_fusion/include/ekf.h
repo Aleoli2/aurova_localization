@@ -72,6 +72,8 @@ public:
   double update(ekf::SlamObservation obs);
 
   void getStateAndCovariance(Eigen::Matrix<double, 3, 1>& state, Eigen::Matrix<double, 3, 3>& covariance);
+  
+  void setStateAndCovariance(Eigen::Matrix<double, 3, 1> state, Eigen::Matrix<double, 3, 3> covariance);
 
   void setDebug(bool debug)
   {

@@ -261,3 +261,9 @@ void CEkf::getStateAndCovariance(Eigen::Matrix<double, 3, 1>& state, Eigen::Matr
   state = X_;
   covariance = P_;
 }
+
+void CEkf::setStateAndCovariance(Eigen::Matrix<double, 3, 1> state, Eigen::Matrix<double, 3, 3> covariance)
+{
+  X_ = state;
+  P_ = covariance;
+}
