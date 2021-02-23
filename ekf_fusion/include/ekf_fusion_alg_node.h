@@ -54,6 +54,7 @@ private:
   bool flag_plot_pose_;
   std::string frame_id_;
   std::string child_id_;
+  float min_speed_;
   geometry_msgs::PoseWithCovarianceStamped plot_pose_;
   geometry_msgs::PoseWithCovarianceStamped corr_pose_;
   geometry_msgs::PoseWithCovarianceStamped init_pose_;
