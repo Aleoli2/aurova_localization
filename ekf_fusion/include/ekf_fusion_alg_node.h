@@ -50,34 +50,23 @@ private:
 
   ekf::KalmanConfiguration kalman_config_;
   CEkfPtr ekf_;
-  bool flag_corr_pose_;
   bool flag_plot_pose_;
   std::string frame_id_;
   std::string child_id_;
   float min_speed_;
   geometry_msgs::PoseWithCovarianceStamped plot_pose_;
-  geometry_msgs::PoseWithCovarianceStamped corr_pose_;
   geometry_msgs::PoseWithCovarianceStamped init_pose_;
   geometry_msgs::TransformStamped odom_to_map_;
   tf::TransformBroadcaster broadcaster_;
   tf::TransformListener listener_;
 
   // [publisher attributes]
-  ros::Publisher corr_pose_pub_;
   ros::Publisher plot_pose_pub_;
 
   // [subscriber attributes]
   ros::Subscriber odom_gps_sub_;
   ros::Subscriber odom_raw_sub_;
-  ros::Subscriber slam_pose_sub_;
   ros::Subscriber init_pose_sub_;
-
-  /**
-   * \brief callback for read pose messages
-   * This message can be read from different localization sources by remapping in the
-   * execution of the node.
-   */
-  void cb_getPoseMsg(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& pose_msg);
   
   /**
    * \brief callback for read initial pose messages

@@ -23,12 +23,6 @@ struct OdomAction
   double sigma_x, sigma_y, sigma_theta;
 };
 
-struct SlamObservation
-{
-  double x,y,theta;
-  double sigma_x, sigma_y, sigma_theta;
-};
-
 struct KalmanConfiguration
 {
   double x_ini, y_ini, theta_ini;
@@ -68,8 +62,6 @@ public:
   void predict(ekf::OdomAction act);
 
   double update(ekf::GnssObservation obs);
-
-  double update(ekf::SlamObservation obs);
 
   void getStateAndCovariance(Eigen::Matrix<double, 3, 1>& state, Eigen::Matrix<double, 3, 3>& covariance);
   
