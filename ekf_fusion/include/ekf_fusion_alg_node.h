@@ -51,6 +51,7 @@ private:
   ekf::KalmanConfiguration kalman_config_;
   CEkfPtr ekf_;
   bool flag_plot_pose_;
+  bool is_simulation_;
   std::string frame_id_;
   std::string child_id_;
   float min_speed_;

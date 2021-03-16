@@ -15,6 +15,7 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
   this->public_node_handle_.getParam("/ekf_fusion/outlier_mahalanobis",
                                      this->kalman_config_.outlier_mahalanobis_threshold);
   this->public_node_handle_.getParam("/ekf_fusion/min_speed", this->min_speed_);
+  this->public_node_handle_.getParam("/ekf_fusion/is_simulation", this->is_simulation_);
 
   this->ekf_ = new CEkf(this->kalman_config_);
 
@@ -139,11 +140,13 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
 {
   this->alg_.lock();
 
+  static int first_exec = true;
+
   double vx = odom_msg->twist.twist.linear.x;
   double vy = odom_msg->twist.twist.linear.y;
   double speed = sqrt(vx * vx + vy * vy);
 
-  if (speed > this->min_speed_)
+  if (speed > this->min_speed_ || (this->is_simulation_ && first_exec))
   {
 
     ekf::GnssObservation obs;
@@ -235,6 +238,7 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
     ////////////////////////////////////////////////////////////////////////////////
 
     this->ekf_->flag_ekf_initialised_ = true;
+    first_exec = false;
 
   }
 
