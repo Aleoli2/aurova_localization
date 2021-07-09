@@ -30,4 +30,4 @@ Parameters:
 * ~pose_simulation/var_z (default: null): Variance in z axis.
 * ~pose_simulation/var_w (default: null): Variance in yaw component. 
 
-**ekf_loose_integration (incomplete/deprecated)**  
+**ekf_loose_integration (INCOMPLETED/DEPRECATED!!)**  
