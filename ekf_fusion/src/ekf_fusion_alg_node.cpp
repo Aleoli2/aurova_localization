@@ -5,7 +5,7 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
 {
 
   //init class attributes if necessary
-  this->loop_rate_ = 10; //in [Hz]
+  //this->loop_rate_ = 10; //in [Hz]
   this->flag_plot_pose_ = false;
   this->public_node_handle_.getParam("/ekf_fusion/frame_id", this->frame_id_);
   this->public_node_handle_.getParam("/ekf_fusion/child_id", this->child_id_);
