@@ -18,6 +18,13 @@ Parameters:
 * ~ekf_fusion/min_speed (default: null): Under this speed, the filter does not take into account the orientation in /odometry_gps.
 * ~ekf_fusion/is_simulation (default: false): It shoul be true for gazebo simulation case, and false for real or .bag file case.
 
+**get_pose_from_tf**
+This package contains a node that, as input, reads the /tf messages. This node calculates the transformation between two differents frames to obtain a odometry message. The node output is published in the topic /odometry_filtered of type nav_msgs::Odometry.
+
+Parameters:
+* ~frame_id_tf (default: ""): Parent frame name to transform.
+* ~child_id_tf (default: ""): Child frame name to transform.
+
 **pose_simulation**
 This package contains a node that, as input, reads the topic /desired_ackermann_state of type ackermann_msgs::AckermannDriveStamped and generates a simulated movement into virtual space integrating the Ackermann inputs. As output generates a topic /pose_sim of type geometry_msgs::PoseWithCovarianceStamped.
 
