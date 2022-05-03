@@ -4,7 +4,7 @@ PoseSimulationAlgNode::PoseSimulationAlgNode(void) :
     algorithm_base::IriBaseAlgorithm<PoseSimulationAlgorithm>()
 {
   //init class attributes if necessary
-  this->loop_rate_ = 10; //in [Hz]
+  //this->loop_rate_ = 10; //in [Hz]
   this->public_node_handle_.getParam("/pose_simulation/frame_id", this->frame_id_);
   this->public_node_handle_.getParam("/pose_simulation/child_id", this->child_id_);
   this->public_node_handle_.getParam("/pose_simulation/d_vehicle", this->d_vehicle_);
