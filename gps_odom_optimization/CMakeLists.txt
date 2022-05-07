@@ -84,7 +84,8 @@ include_directories(${EIGEN_INCLUDE_DIRS})
 # add_library(${PROJECT_NAME} <list of source files>)
 
 ## Declare a cpp executable
-add_executable(${PROJECT_NAME} src/gps_odom_optimization_alg.cpp src/gps_odom_optimization_alg_node.cpp)
+add_executable(${PROJECT_NAME} src/gps_odom_optimization_alg.cpp src/gps_odom_optimization_alg_node.cpp
+                               include/common_types.hpp include/ceres_structs.hpp)
 
 # ******************************************************************** 
 #                   Add the libraries

@@ -29,7 +29,8 @@
 #include "gps_odom_optimization_alg.h"
 
 #include <eigen_conversions/eigen_msg.h>
-#include <Eigen/Dense>
+
+#include "ceres_structs.hpp"
 
 // [publisher subscriber headers]
 #include <tf/transform_listener.h>

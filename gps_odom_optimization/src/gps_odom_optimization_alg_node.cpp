@@ -151,6 +151,8 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   this->alg_.lock();
   this->odom_mutex_enter();
 
+  OdometryConstraint constraint_odom;
+
   tf::StampedTransform tf_odom2base;
   try
   {
