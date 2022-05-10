@@ -5,6 +5,7 @@ GpsOdomOptimizationAlgNode::GpsOdomOptimizationAlgNode(void) :
 {
   //init class attributes if necessary
   this->gps_received_ = false;
+  this->optimization_ = new OptimizationProcess();
   if(!this->private_node_handle_.getParam("rate", this->config_.rate))
   {
 	ROS_WARN("GpsOdomOptimizationAlgNode::GpsOdomOptimizationAlgNode: param 'rate' not found");
@@ -122,11 +123,61 @@ void GpsOdomOptimizationAlgNode::mainNodeThread(void)
 /*  [subscriber callbacks] */
 void GpsOdomOptimizationAlgNode::odometry_gps_callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-  ROS_INFO("GpsOdomOptimizationAlgNode::odometry_gps_callback: New Message Received");
+  //ROS_INFO("GpsOdomOptimizationAlgNode::odometry_gps_callback: New Message Received");
 
   //use appropiate mutex to shared variables if necessary
   this->alg_.lock();
   this->odometry_gps_mutex_enter();
+
+  ////////////////////////////////////////////////////////////////////////////////
+  ///// GENERATE CURRENT GPS POSE
+  // get orientation information
+  tf::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y,
+		           msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+  tf::Matrix3x3 m(q);
+  double roll, pitch, yaw, x, y, w;
+  m.getRPY(roll, pitch, yaw);
+
+  // get position information
+  x = msg->pose.pose.position.x;
+  y = msg->pose.pose.position.y;
+  w = yaw;
+  ////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////
+
+  size_t index = this->optimization_->getTrajectoryOdom().size() - 1;
+
+  ////////////////////////////////////////////////////////////////////////////////
+  //// PRIOR CONSTRAINT GENERATION
+  if (index > 0){
+	  PriorConstraint constraint_prior;
+	  constraint_prior.id = this->optimization_->getTrajectoryOdom().at(index).id;
+
+	  constraint_prior.p.x() = x;
+	  constraint_prior.p.y() = y;
+	  constraint_prior.p.z() = 0.0;
+
+	  Eigen::AngleAxisd yaw_angle(w, Eigen::Vector3d::UnitZ());
+	  constraint_prior.q = yaw_angle;
+
+	  constraint_prior.covariance = Eigen::Matrix<double, 6, 6>::Identity();
+	  int count = 0;
+	  for (int i = 0; i < 6; i++){
+		  for (int j = 0; j < 6; j++){
+			  constraint_prior.covariance(j, i) = msg->pose.covariance[count];
+			  count++;
+		  }
+	  }
+	  constraint_prior.covariance = constraint_prior.covariance + Eigen::Matrix<double, 6, 6>::Identity()*10.0;
+	  constraint_prior.information = constraint_prior.covariance.inverse();
+
+	  this->optimization_->addPriorConstraint(constraint_prior);
+
+	  this->gps_received_ = true;
+  }
+  ////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////
+
 
   //unlock previously blocked shared variables
   this->alg_.unlock();
@@ -145,36 +196,114 @@ void GpsOdomOptimizationAlgNode::odometry_gps_mutex_exit(void)
 
 void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-  ROS_INFO("GpsOdomOptimizationAlgNode::odom_callback: New Message Received");
+  //ROS_INFO("GpsOdomOptimizationAlgNode::odom_callback: New Message Received");
 
   //use appropiate mutex to shared variables if necessary
   this->alg_.lock();
   this->odom_mutex_enter();
 
-  OdometryConstraint constraint_odom;
+  static size_t id = 0;
 
+  ////////////////////////////////////////////////////////////////////////////////
+  ///// GENERATE CURRENT ODOM POSE
+  // get orientation information
+  tf::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y,
+		           msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+  tf::Matrix3x3 m(q);
+  double roll, pitch, yaw, x, y, w;
+  m.getRPY(roll, pitch, yaw);
+
+  // get position information
+  x = msg->pose.pose.position.x;
+  y = msg->pose.pose.position.y;
+  w = yaw;
+  ////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////
+
+
+
+  ////////////////////////////////////////////////////////////////////////////////
+  ///// COMPUTE ODOMETRI AND PRE-ESTIMATION STATE
+  this->optimization_->addPose3dToTrajectoryOdom(parsePose2dToPose3d (id, x, y, w, Eigen::Matrix<double, 6, 6>::Zero()));
+  size_t index = this->optimization_->getTrajectoryOdom().size() - 1;
+  this->optimization_->propagateState(index);
+  ////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////
+
+
+  ////////////////////////////////////////////////////////////////////////////////
+  //// ODOMETRY CONSTRAINTS GENERATION
+  OdometryConstraint constraint_odom;
+  if (index > 0){
+	  Eigen::Matrix<double, 3, 1> p_a(this->optimization_->getTrajectoryOdom().at(index-1).p);
+	  Eigen::Quaternion<double> q_a(this->optimization_->getTrajectoryOdom().at(index-1).q);
+	  Eigen::Matrix<double, 3, 1> p_b(this->optimization_->getTrajectoryOdom().at(index).p);
+	  Eigen::Quaternion<double> q_b(this->optimization_->getTrajectoryOdom().at(index).q);
+
+	  // Compute the relative transformation between the two frames.
+	  Eigen::Quaternion<double> q_a_inverse = q_a.conjugate();
+	  Eigen::Quaternion<double> q_ab_estimated = q_a_inverse * q_b;
+
+	  // Represent the displacement between the two frames in the A frame.
+	  Eigen::Matrix<double, 3, 1> p_ab_estimated = q_a_inverse * (p_b - p_a);
+
+	  constraint_odom.id_begin = this->optimization_->getTrajectoryOdom().at(index-1).id;
+	  constraint_odom.id_end = this->optimization_->getTrajectoryOdom().at(index).id;
+
+	  constraint_odom.tf_p = p_ab_estimated;
+	  constraint_odom.tf_q = q_ab_estimated;
+
+	  Eigen::Matrix<double, 6, 6> covariance = Eigen::Matrix<double, 6, 6>::Identity();
+	  constraint_odom.covariance = covariance;
+	  constraint_odom.information = constraint_odom.covariance.inverse();
+
+	  this->optimization_->addOdometryConstraint(constraint_odom);
+
+
+  }
+  ////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+		////////////////////////////////////////////////////////////////////////////////
+		//// COMPUTE OPTIMIZATION PROBLEM
+		double ini, end;
+		ini = ros::Time::now().toSec();
+
+		// residuals generation
+		ceres::Problem problem;
+		ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
+		ceres::LossFunction* loss_function = new ceres::HuberLoss(0.01); //nullptr;//new ceres::HuberLoss(0.01);
+		this->optimization_->generatePriorResiduals(loss_function, quaternion_local_parameterization, &problem);
+		this->optimization_->generateOdomResiduals(loss_function, quaternion_local_parameterization, &problem);
+
+		// solve optimization problem
+		if (index > 0) this->optimization_->solveOptimizationProblem(&problem);
+
+		// loop time
+		end = ros::Time::now().toSec();
+		ROS_INFO("duration total: %f", end - ini);
+		////////////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+  ////////////////////////////////////////////////////////////////////////////////
+  ///// GENERATE map -> odom TRANSFORM
   tf::StampedTransform tf_odom2base;
   try
   {
-    this->tf_listener_.lookupTransform("map", "base_link", ros::Time(0), tf_odom2base);
+    this->tf_listener_.lookupTransform("odom", "base_link", ros::Time(0), tf_odom2base);
   }
   catch (tf::TransformException &ex)
   {
     ROS_WARN("[draw_frames] TF exception cb_getGpsOdomMsg:\n%s", ex.what());
   }
 
-  //get yaw information
-  tf::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y,
-		           msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
-  tf::Matrix3x3 m(q);
-  double roll, pitch, yaw, x, y;
-  m.getRPY(roll, pitch, yaw);
-
-  x = msg->pose.pose.position.x;
-  y = msg->pose.pose.position.y;
-
-  ////////////////////////////////////////////////////////////////////////////////
-  ///// generate map -> odom transform
   // generate 4x4 transform matrix odom2base
   Eigen::Affine3d af_odom2base;
   tf::transformTFToEigen(tf_odom2base, af_odom2base);
@@ -184,12 +313,16 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   tr_odom2base.block<3, 1>(0, 3) = af_odom2base.translation();
 
   // generate 4x4 transform matrix map2base (TODO: Sustituir por optimization result!!!)
+  //tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, yaw);
   Eigen::Matrix4d tr_map2base;
   tr_map2base.setIdentity();
-  tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, yaw);
-  Eigen::Quaterniond rot(quaternion[3], quaternion[0], quaternion[1], quaternion[2]);
+  Eigen::Quaterniond rot(this->optimization_->getTrajectoryEstimated().at(index).q.w(),
+		                 this->optimization_->getTrajectoryEstimated().at(index).q.x(),
+						 this->optimization_->getTrajectoryEstimated().at(index).q.y(),
+						 this->optimization_->getTrajectoryEstimated().at(index).q.z());
   tr_map2base.block<3, 3>(0, 0) = rot.toRotationMatrix();
-  tr_map2base.block<3, 1>(0, 3) = Eigen::Vector3d(x, y, 0.0);
+  tr_map2base.block<3, 1>(0, 3) = Eigen::Vector3d(this->optimization_->getTrajectoryEstimated().at(index).p.x(),
+		                                          this->optimization_->getTrajectoryEstimated().at(index).p.y(), 0.0);
 
   // given: odom2base * map2odom = map2base
   // thenn: map2odom = map2base * odom2base^(-1)
@@ -224,8 +357,9 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   ////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////
 
+
   ////////////////////////////////////////////////////////////////////////////////
-  ///// generate velodyne -> base_link transform
+  ///// GENERATE velodyne -> base_link TRANSFORM
   //// TODO: FROM URDF!!!!!!!!
   this->transform_msg_.header.frame_id = "velodyne";
   this->transform_msg_.child_frame_id = "base_link";
@@ -242,6 +376,9 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   this->tf_broadcaster_.sendTransform(this->transform_msg_);
   ////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////
+
+
+  id++;
 
   //unlock previously blocked shared variables
   this->alg_.unlock();

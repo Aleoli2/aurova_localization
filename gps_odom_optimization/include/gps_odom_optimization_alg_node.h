@@ -30,7 +30,7 @@
 
 #include <eigen_conversions/eigen_msg.h>
 
-#include "ceres_structs.hpp"
+#include "optimization_process.hpp"
 
 // [publisher subscriber headers]
 #include <tf/transform_listener.h>
@@ -52,6 +52,7 @@ class GpsOdomOptimizationAlgNode : public algorithm_base::IriBaseAlgorithm<GpsOd
   private:
 
 	bool gps_received_;
+	OptimizationProcessPtr optimization_;
 
     // [publisher attributes]
     tf::TransformBroadcaster tf_broadcaster_;

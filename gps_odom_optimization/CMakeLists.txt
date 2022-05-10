@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS iri_base_algorithm tf nav_msgs geometry_
 #           Add system and labrobotica dependencies here
 # ******************************************************************** 
 # find_package(<dependency> REQUIRED)
+find_package(Ceres REQUIRED)
 
 # ******************************************************************** 
 #           Add topic, service and action definition here
@@ -78,6 +79,7 @@ catkin_package(
 include_directories(include)
 include_directories(${catkin_INCLUDE_DIRS})
 include_directories(${EIGEN_INCLUDE_DIRS})
+include_directories(${CERES_INCLUDE_DIRS})
 # include_directories(${<dependency>_INCLUDE_DIRS})
 
 ## Declare a cpp library
@@ -85,12 +87,13 @@ include_directories(${EIGEN_INCLUDE_DIRS})
 
 ## Declare a cpp executable
 add_executable(${PROJECT_NAME} src/gps_odom_optimization_alg.cpp src/gps_odom_optimization_alg_node.cpp
-                               include/common_types.hpp include/ceres_structs.hpp)
+                               include/common_types.hpp include/ceres_structs.hpp
+                               include/optimization_process.hpp)
 
 # ******************************************************************** 
 #                   Add the libraries
 # ******************************************************************** 
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} ${CERES_LIBRARIES})
 # target_link_libraries(${PROJECT_NAME} ${<dependency>_LIBRARIES})
 
 # ******************************************************************** 
