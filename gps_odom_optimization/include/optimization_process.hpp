@@ -119,42 +119,20 @@ void OptimizationProcess::generateOdomResiduals(ceres::LossFunction* loss_functi
 												ceres::Problem* problem)
 {
 	//// Generate residuals
-	for (int j = 0; j < constraints_odom_.size(); j++){
+	for (int j = 1; j < constraints_odom_.size(); j++){
 
-		size_t index_b;
-		size_t index_e;
-		bool exist_b = false;
-		bool exist_e = false;
+		ceres::CostFunction* cost_function_odom = OdometryErrorTerm::Create(constraints_odom_.at(j).tf_p,
+																			constraints_odom_.at(j).tf_q,
+																			constraints_odom_.at(j).information);
+		problem->AddResidualBlock(cost_function_odom,
+								  loss_function,
+								  trajectory_estimated_.at(j-1).p.data(),
+								  trajectory_estimated_.at(j-1).q.coeffs().data(),
+								  trajectory_estimated_.at(j).p.data(),
+								  trajectory_estimated_.at(j).q.coeffs().data());
 
-		//std::cout << "j: " << j << std::endl;
-
-		for (int i = 0; i < trajectory_estimated_.size(); i++){
-			if (trajectory_estimated_.at(i).id == constraints_odom_.at(j).id_begin){
-				index_b = i;
-				exist_b = true;
-			}
-			if (trajectory_estimated_.at(i).id == constraints_odom_.at(j).id_end){
-				index_e = i;
-				exist_e = true;
-			}
-		}
-
-		//std::cout << "index_b: " << index_b << ", exist_e: " << exist_e << std::endl;
-
-        if (exist_b && exist_e){
-			ceres::CostFunction* cost_function_odom = OdometryErrorTerm::Create(constraints_odom_.at(j).tf_p,
-																				constraints_odom_.at(j).tf_q,
-																				constraints_odom_.at(j).information);
-			problem->AddResidualBlock(cost_function_odom,
-									  loss_function,
-									  trajectory_estimated_.at(index_b).p.data(),
-									  trajectory_estimated_.at(index_b).q.coeffs().data(),
-									  trajectory_estimated_.at(index_e).p.data(),
-									  trajectory_estimated_.at(index_e).q.coeffs().data());
-
-			problem->SetParameterization(trajectory_estimated_.at(index_b).q.coeffs().data(), quaternion_local_parameterization);
-			problem->SetParameterization(trajectory_estimated_.at(index_e).q.coeffs().data(), quaternion_local_parameterization);
-        }
+		problem->SetParameterization(trajectory_estimated_.at(j-1).q.coeffs().data(), quaternion_local_parameterization);
+		problem->SetParameterization(trajectory_estimated_.at(j).q.coeffs().data(), quaternion_local_parameterization);
 	}
 	return;
 }
@@ -165,27 +143,14 @@ void OptimizationProcess::generatePriorResiduals(ceres::LossFunction* loss_funct
 {
 	//// Generate residuals
 	for (int j = 0; j < constraints_prior_.size(); j++){
-
-		size_t index;
-		bool exist = false;
-
-		for (int i = 0; i < trajectory_estimated_.size(); i++){
-			if (trajectory_estimated_.at(i).id == constraints_prior_.at(j).id){
-				index = i;
-				exist = true;
-			}
-		}
-
-		if (exist){
-			ceres::CostFunction* cost_function_prior = PriorErrorTerm::Create(constraints_prior_.at(j).p,
-																			  constraints_prior_.at(j).q,
-																			  constraints_prior_.at(j).information);
-			problem->AddResidualBlock(cost_function_prior,
-									  loss_function,
-									  trajectory_estimated_.at(index).p.data(),
-									  trajectory_estimated_.at(index).q.coeffs().data());
-			problem->SetParameterization(trajectory_estimated_.at(index).q.coeffs().data(), quaternion_local_parameterization);
-		}
+		ceres::CostFunction* cost_function_prior = PriorErrorTerm::Create(constraints_prior_.at(j).p,
+																		  constraints_prior_.at(j).q,
+																		  constraints_prior_.at(j).information);
+		problem->AddResidualBlock(cost_function_prior,
+								  loss_function,
+								  trajectory_estimated_.at(j).p.data(),
+								  trajectory_estimated_.at(j).q.coeffs().data());
+		problem->SetParameterization(trajectory_estimated_.at(j).q.coeffs().data(), quaternion_local_parameterization);
 	}
 	return;
 }

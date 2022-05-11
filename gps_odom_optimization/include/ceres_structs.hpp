@@ -74,7 +74,7 @@ struct PriorErrorTerm {
         Eigen::Quaternion<T> q_ab_estimated = q_a_inverse.cast<T>() * q_b;
 
         // Represent the displacement between prior and estimated.
-        Eigen::Matrix<T, 3, 1> p_ab_estimated = q_a_inverse.cast<T>() * (p_b - p_a.cast<T>());
+        Eigen::Matrix<T, 3, 1> p_ab_estimated = (p_b - p_a.cast<T>());
 
         // Compute the residuals.
         Eigen::Map<Eigen::Matrix<T, 6, 1>> residuals(residuals_ptr);

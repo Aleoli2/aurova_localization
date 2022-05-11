@@ -59,7 +59,8 @@ class GpsOdomOptimizationAlgNode : public algorithm_base::IriBaseAlgorithm<GpsOd
     geometry_msgs::TransformStamped transform_msg_;
 
     ros::Publisher localization_publisher_;
-    geometry_msgs::PoseWithCovarianceStamped localization_PoseWithCovarianceStamped_msg_;
+    nav_msgs::Odometry localization_Odometry_msg_;
+    nav_msgs::Odometry gps_odom_msg_;
 
 
     // [subscriber attributes]
