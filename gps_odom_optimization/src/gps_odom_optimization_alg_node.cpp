@@ -91,229 +91,9 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   this->odom_mutex_enter();
 
   static size_t id = 0;
-  static size_t id_pre = 0;
-  static bool publish_tf = false;
-  static Pose3dWithCovariance new_map_odom;
 
   ////////////////////////////////////////////////////////////////////////////////
   ///// GENERATE CURRENT ODOM POSE
-  // get orientation information
-  tf::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y,
-		           msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
-  tf::Matrix3x3 m(q);
-  double roll, pitch, yaw, x, y, w;
-  m.getRPY(roll, pitch, yaw);
-
-  // get position information
-  x = msg->pose.pose.position.x;
-  y = msg->pose.pose.position.y;
-  w = yaw;
-  ////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////
-
-
-
-  ////////////////////////////////////////////////////////////////////////////////
-  ///// COMPUTE ODOMETRI AND PRE-ESTIMATION STATE
-  this->optimization_->addPose3dToTrajectoryOdom(parsePose2dToPose3d (id, x, y, w, Eigen::Matrix<double, 6, 6>::Zero()));
-  size_t index = this->optimization_->getTrajectoryOdom().size() - 1;
-  //this->optimization_->propagateState(index);
-  ////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////
-
-
-  if (this->gps_received_){
-
-	  this->gps_received_ = false;
-
-	  ////////////////////////////////////////////////////////////////////////////////
-	  ///// GENERATE CURRENT GPS POSE
-	  // get orientation information
-	  tf::Quaternion q_gps(this->gps_odom_msg_.pose.pose.orientation.x, this->gps_odom_msg_.pose.pose.orientation.y,
-			               this->gps_odom_msg_.pose.pose.orientation.z, this->gps_odom_msg_.pose.pose.orientation.w);
-	  tf::Matrix3x3 m_gps(q_gps);
-	  double roll_gps, pitch_gps, yaw_gps, x_gps, y_gps, w_gps;
-	  m_gps.getRPY(roll_gps, pitch_gps, yaw_gps);
-
-	  // get position information
-	  x_gps = this->gps_odom_msg_.pose.pose.position.x;
-	  y_gps = this->gps_odom_msg_.pose.pose.position.y;
-	  w_gps = yaw_gps;
-	  ////////////////////////////////////////////////////////////////////////////////
-	  ////////////////////////////////////////////////////////////////////////////////
-
-	  ////////////////////////////////////////////////////////////////////////////////
-	  //// PRIOR CONSTRAINT GENERATION
-	  PriorConstraint constraint_prior;
-	  constraint_prior.id = this->optimization_->getTrajectoryOdom().at(index).id;
-
-	  constraint_prior.p.x() = x_gps;
-	  constraint_prior.p.y() = y_gps;
-	  constraint_prior.p.z() = 0.0;
-
-	  Eigen::AngleAxisd yaw_angle_gps(w_gps, Eigen::Vector3d::UnitZ());
-	  constraint_prior.q = yaw_angle_gps;
-
-	  constraint_prior.covariance = Eigen::Matrix<double, 6, 6>::Identity();
-	  /*int count = 0;
-	  for (int i = 0; i < 6; i++){
-		  for (int j = 0; j < 6; j++){
-			  constraint_prior.covariance(j, i) = msg->pose.covariance[count];
-			  count++;
-		  }
-	  }*/
-	  constraint_prior.covariance = constraint_prior.covariance + Eigen::Matrix<double, 6, 6>::Identity()*10.0;
-	  constraint_prior.information = constraint_prior.covariance.inverse();
-
-	  this->optimization_->addPriorConstraint(constraint_prior);
-	  ////////////////////////////////////////////////////////////////////////////////
-	  ////////////////////////////////////////////////////////////////////////////////
-
-	  size_t index_pre = index - (id - id_pre);
-	  if (index_pre > 0){
-		  ////////////////////////////////////////////////////////////////////////////////
-		  //// ODOMETRY CONSTRAINTS GENERATION
-		  OdometryConstraint constraint_odom;
-		  Eigen::Matrix<double, 3, 1> p_a(this->optimization_->getTrajectoryOdom().at(index_pre).p);
-		  Eigen::Quaternion<double> q_a(this->optimization_->getTrajectoryOdom().at(index_pre).q);
-		  Eigen::Matrix<double, 3, 1> p_b(this->optimization_->getTrajectoryOdom().at(index).p);
-		  Eigen::Quaternion<double> q_b(this->optimization_->getTrajectoryOdom().at(index).q);
-
-		  // Compute the relative transformation between the two frames.
-		  Eigen::Quaternion<double> q_a_inverse = q_a.conjugate();
-		  Eigen::Quaternion<double> q_ab_estimated = q_a_inverse * q_b;
-
-		  // Represent the displacement between the two frames in the A frame.
-		  Eigen::Matrix<double, 3, 1> p_ab_estimated = p_b - p_a;
-
-		  constraint_odom.id_begin = this->optimization_->getTrajectoryOdom().at(index_pre).id;
-		  constraint_odom.id_end = this->optimization_->getTrajectoryOdom().at(index).id;
-
-		  constraint_odom.tf_p = p_ab_estimated;
-		  constraint_odom.tf_q = q_ab_estimated;
-
-		  Eigen::Matrix<double, 6, 6> covariance = Eigen::Matrix<double, 6, 6>::Identity();
-		  constraint_odom.covariance = covariance;
-		  constraint_odom.information = constraint_odom.covariance.inverse();
-
-		  this->optimization_->addOdometryConstraint(constraint_odom);
-		  ////////////////////////////////////////////////////////////////////////////////
-		  ////////////////////////////////////////////////////////////////////////////////
-
-		  ////////////////////////////////////////////////////////////////////////////////
-		  ///// COMPUTE PRE-ESTIMATION STATE
-		  if (this->optimization_->getTrajectoryEstimated().size() == 0){
-			  this->optimization_->addPose3dToTrajectoryEstimated(this->optimization_->getTrajectoryOdom().at(index_pre));
-			  this->optimization_->addPose3dToTrajectoryEstimated(this->optimization_->getTrajectoryOdom().at(index));
-		  }else{
-				////Propagate pose
-				Pose3dWithCovariance propagated_pose;
-				propagated_pose.id = this->optimization_->getTrajectoryOdom().at(index).id;
-				propagated_pose.p = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p + p_ab_estimated;
-				propagated_pose.q = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q * q_ab_estimated;
-				propagated_pose.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
-
-				this->optimization_->addPose3dToTrajectoryEstimated(propagated_pose);
-		  }
-		  ////////////////////////////////////////////////////////////////////////////////
-		  ////////////////////////////////////////////////////////////////////////////////
-
-		  ////////////////////////////////////////////////////////////////////////////////
-		  //// COMPUTE OPTIMIZATION PROBLEM
-		  double ini, end, inter;
-		  ini = ros::Time::now().toSec();
-
-		  // residuals generation
-		  ceres::Problem problem;
-		  ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
-		  ceres::LossFunction* loss_function = new ceres::HuberLoss(0.01); //nullptr;//new ceres::HuberLoss(0.01);
-		  this->optimization_->generatePriorResiduals(loss_function, quaternion_local_parameterization, &problem);
-		  this->optimization_->generateOdomResiduals(loss_function, quaternion_local_parameterization, &problem);
-
-		  inter = ros::Time::now().toSec();
-		  ROS_INFO("DURACION RESIDUALS: %f", inter - ini);
-
-		  // solve optimization problem
-		  this->optimization_->solveOptimizationProblem(&problem);
-		  publish_tf = true;
-
-		  // loop time
-		  end = ros::Time::now().toSec();
-		  ROS_INFO("DURACION OPTIMIZACION: %f", end - inter);
-		  ////////////////////////////////////////////////////////////////////////////////
-		  ////////////////////////////////////////////////////////////////////////////////
-
-		  size_t index_est = this->optimization_->getTrajectoryEstimated().size() - 1;
-
-		  this->localization_Odometry_msg_.header.seq = id;
-		  this->localization_Odometry_msg_.header.stamp = ros::Time::now();
-		  this->localization_Odometry_msg_.header.frame_id = "map";
-		  this->localization_Odometry_msg_.child_frame_id = "base_link";
-		  this->localization_Odometry_msg_.pose.pose.position.x = this->optimization_->getTrajectoryEstimated().at(index_est).p.x();
-		  this->localization_Odometry_msg_.pose.pose.position.y = this->optimization_->getTrajectoryEstimated().at(index_est).p.y();
-		  this->localization_Odometry_msg_.pose.pose.position.z = 0.0;
-
-		  this->localization_Odometry_msg_.pose.pose.orientation.x = this->optimization_->getTrajectoryEstimated().at(index_est).q.x();
-		  this->localization_Odometry_msg_.pose.pose.orientation.y = this->optimization_->getTrajectoryEstimated().at(index_est).q.y();
-		  this->localization_Odometry_msg_.pose.pose.orientation.z = this->optimization_->getTrajectoryEstimated().at(index_est).q.z();
-		  this->localization_Odometry_msg_.pose.pose.orientation.w = this->optimization_->getTrajectoryEstimated().at(index_est).q.w();
-
-		  this->localization_publisher_.publish(this->localization_Odometry_msg_);
-
-		  new_map_odom = this->optimization_->getTrajectoryEstimated().at(index_est);
-	  }
-
-	  id_pre = id;
-
-  }else{
-	  /*size_t index_est = this->optimization_->getTrajectoryEstimated().size() - 1;
-
-	  if (publish_tf){
-		  ////////////////////////////////////////////////////////////////////////////////
-		  //// NEW ODOMETRY MAP GENERATION
-		  OdometryConstraint constraint_odom;
-		  Eigen::Matrix<double, 3, 1> p_a(this->optimization_->getTrajectoryOdom().at(index-1).p);
-		  Eigen::Quaternion<double> q_a(this->optimization_->getTrajectoryOdom().at(index-1).q);
-		  Eigen::Matrix<double, 3, 1> p_b(this->optimization_->getTrajectoryOdom().at(index).p);
-		  Eigen::Quaternion<double> q_b(this->optimization_->getTrajectoryOdom().at(index).q);
-
-		  // Compute the relative transformation between the two frames.
-		  Eigen::Quaternion<double> q_a_inverse = q_a.conjugate();
-		  Eigen::Quaternion<double> q_ab_estimated = q_a_inverse * q_b;
-
-		  // Represent the displacement between the two frames in the A frame.
-		  Eigen::Matrix<double, 3, 1> p_ab_estimated = p_b - p_a;
-		  ////////////////////////////////////////////////////////////////////////////////
-		  ////////////////////////////////////////////////////////////////////////////////
-
-		  ////////////////////////////////////////////////////////////////////////////////
-		  ///// COMPUTE PRE-ESTIMATION STATE
-		  ////Propagate pose
-		  new_map_odom.p = new_map_odom.p + p_ab_estimated;
-		  new_map_odom.q = new_map_odom.q * q_ab_estimated;
-		  ////////////////////////////////////////////////////////////////////////////////
-		  ////////////////////////////////////////////////////////////////////////////////
-
-		  this->localization_Odometry_msg_.header.seq = id;
-		  this->localization_Odometry_msg_.header.stamp = ros::Time::now();
-		  this->localization_Odometry_msg_.header.frame_id = "map";
-		  this->localization_Odometry_msg_.child_frame_id = "base_link";
-		  this->localization_Odometry_msg_.pose.pose.position.x = new_map_odom.p.x();
-		  this->localization_Odometry_msg_.pose.pose.position.y = new_map_odom.p.y();
-		  this->localization_Odometry_msg_.pose.pose.position.z = 0.0;
-
-		  this->localization_Odometry_msg_.pose.pose.orientation.x = new_map_odom.q.x();
-		  this->localization_Odometry_msg_.pose.pose.orientation.y = new_map_odom.q.y();
-		  this->localization_Odometry_msg_.pose.pose.orientation.z = new_map_odom.q.z();
-		  this->localization_Odometry_msg_.pose.pose.orientation.w = new_map_odom.q.w();
-
-		  this->localization_publisher_.publish(this->localization_Odometry_msg_);
-
-	  }*/
-  }
-
-  ////////////////////////////////////////////////////////////////////////////////
-  ///// GENERATE map -> odom TRANSFORM
   tf::StampedTransform tf_odom2base;
   try
   {
@@ -332,22 +112,81 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   tr_odom2base.block<3, 3>(0, 0) = af_odom2base.linear();
   tr_odom2base.block<3, 1>(0, 3) = af_odom2base.translation();
 
-  // generate 4x4 transform matrix map2base (TODO: Sustituir por optimization result!!!)
-  //tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, yaw);
-  Eigen::Matrix4d tr_map2base;
-  tr_map2base.setIdentity();
-  Eigen::Quaterniond rot(this->localization_Odometry_msg_.pose.pose.orientation.w,
-		                 this->localization_Odometry_msg_.pose.pose.orientation.x,
-						 this->localization_Odometry_msg_.pose.pose.orientation.y,
-						 this->localization_Odometry_msg_.pose.pose.orientation.z);
-  tr_map2base.block<3, 3>(0, 0) = rot.toRotationMatrix();
-  tr_map2base.block<3, 1>(0, 3) = Eigen::Vector3d(this->localization_Odometry_msg_.pose.pose.position.x,
-		                                          this->localization_Odometry_msg_.pose.pose.position.y, 0.0);
+  double x = tr_odom2base(0, 3);
+  double y = tr_odom2base(1, 3);
+  ////////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////////
 
-  // given: odom2base * map2odom = map2base
-  // thenn: map2odom = map2base * odom2base^(-1)
+
+  if (this->gps_received_){
+
+	  this->gps_received_ = false;
+
+	  ////////////////////////////////////////////////////////////////////////////////
+	  ///// GENERATE CURRENT GPS POSE
+	  double x_gps = this->gps_odom_msg_.pose.pose.position.x;
+	  double y_gps = this->gps_odom_msg_.pose.pose.position.y;
+	  ////////////////////////////////////////////////////////////////////////////////
+
+	  ////////////////////////////////////////////////////////////////////////////////
+	  //// POINT CONSTRAINTS GENERATION
+      PointsConstraint constraint_pt;
+
+	  constraint_pt.id = id;
+	  constraint_pt.detection.x() = x;
+	  constraint_pt.detection.y() = y;
+	  constraint_pt.detection.z() = 0.0;
+	  constraint_pt.landmark.x() = x_gps;
+	  constraint_pt.landmark.y() = y_gps;
+	  constraint_pt.landmark.z() = 0.0;
+
+	  constraint_pt.covariance = Eigen::Matrix<double, 3, 3>::Identity();
+	  constraint_pt.information = Eigen::Matrix<double, 3, 3>::Identity();
+
+	  this->optimization_->addPointConstraint(constraint_pt);
+	  ////////////////////////////////////////////////////////////////////////////////
+	  ////////////////////////////////////////////////////////////////////////////////
+
+	  if (this->optimization_->checkOptimization()){
+		  ////////////////////////////////////////////////////////////////////////////////
+		  //// COMPUTE OPTIMIZATION PROBLEM
+		  double ini, end, inter;
+		  ini = ros::Time::now().toSec();
+
+		  // residuals generation
+		  ceres::Problem problem;
+		  ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
+		  ceres::LossFunction* loss_function = new ceres::HuberLoss(0.01); //nullptr;//new ceres::HuberLoss(0.01);
+		  this->optimization_->generatePointResiduals(loss_function, quaternion_local_parameterization, &problem);
+
+		  inter = ros::Time::now().toSec();
+		  ROS_INFO("DURACION RESIDUALS: %f", inter - ini);
+
+		  // solve optimization problem
+		  this->optimization_->solveOptimizationProblem(&problem);
+		  // loop time
+		  end = ros::Time::now().toSec();
+		  ROS_INFO("DURACION OPTIMIZACION: %f", end - inter);
+		  ////////////////////////////////////////////////////////////////////////////////
+		  ////////////////////////////////////////////////////////////////////////////////
+	  }
+  }
+
+
+  ////////////////////////////////////////////////////////////////////////////////
+  ///// GENERATE map -> odom TRANSFORM
+  // generate 4x4 transform matrix map2odom
+  //tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, yaw);
   Eigen::Matrix4d tr_map2odom;
-  tr_map2odom = tr_map2base * tr_odom2base.inverse();
+  tr_map2odom.setIdentity();
+  Eigen::Quaterniond rot(this->optimization_->getMapToOdom().q.w(),
+		  	  	  	  	 this->optimization_->getMapToOdom().q.x(),
+						 this->optimization_->getMapToOdom().q.y(),
+						 this->optimization_->getMapToOdom().q.z());
+  tr_map2odom.block<3, 3>(0, 0) = rot.toRotationMatrix();
+  tr_map2odom.block<3, 1>(0, 3) = Eigen::Vector3d(this->optimization_->getMapToOdom().p.x(),
+		                                          this->optimization_->getMapToOdom().p.y(), 0.0);
+
 
   Eigen::Quaterniond quat_final(tr_map2odom.block<3, 3>(0, 0));
 
@@ -355,49 +194,38 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   this->transform_msg_.child_frame_id = "odom";
   this->transform_msg_.header.stamp = ros::Time::now();
 
-  if (publish_tf){
-	  this->transform_msg_.transform.translation.x = tr_map2odom(0, 3);
-	  this->transform_msg_.transform.translation.y = tr_map2odom(1, 3);
-	  this->transform_msg_.transform.translation.z = tr_map2odom(2, 3);
-	  this->transform_msg_.transform.rotation.x = quat_final.x();
-	  this->transform_msg_.transform.rotation.y = quat_final.y();
-	  this->transform_msg_.transform.rotation.z = quat_final.z();
-	  this->transform_msg_.transform.rotation.w = quat_final.w();
-  }else{
-	  this->transform_msg_.transform.translation.x = 0.0;
-	  this->transform_msg_.transform.translation.y = 0.0;
-	  this->transform_msg_.transform.translation.z = 0.0;
-	  this->transform_msg_.transform.rotation.x = 0.0;
-	  this->transform_msg_.transform.rotation.y = 0.0;
-	  this->transform_msg_.transform.rotation.z = 0.0;
-	  this->transform_msg_.transform.rotation.w = 1.0;
-  }
+  this->transform_msg_.transform.translation.x = tr_map2odom(0, 3);
+  this->transform_msg_.transform.translation.y = tr_map2odom(1, 3);
+  this->transform_msg_.transform.translation.z = tr_map2odom(2, 3);
+  this->transform_msg_.transform.rotation.x = quat_final.x();
+  this->transform_msg_.transform.rotation.y = quat_final.y();
+  this->transform_msg_.transform.rotation.z = quat_final.z();
+  this->transform_msg_.transform.rotation.w = quat_final.w();
 
   this->tf_broadcaster_.sendTransform(this->transform_msg_);
   ////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////
 
 
-  ////////////////////////////////////////////////////////////////////////////////
-  ///// GENERATE velodyne -> base_link TRANSFORM
-  //// TODO: FROM URDF!!!!!!!!
-  this->transform_msg_.header.frame_id = "velodyne";
-  this->transform_msg_.child_frame_id = "base_link";
-  this->transform_msg_.header.stamp = ros::Time::now();
+  Eigen::Matrix4d tr_map2base;
+  tr_map2base = tr_map2odom * tr_odom2base;
 
-  this->transform_msg_.transform.translation.x = -0.55;
-  this->transform_msg_.transform.translation.y = 0.0;
-  this->transform_msg_.transform.translation.z = -0.645;
-  this->transform_msg_.transform.rotation.x = 0.0;
-  this->transform_msg_.transform.rotation.y = 0.0;
-  this->transform_msg_.transform.rotation.z = 0.0;
-  this->transform_msg_.transform.rotation.w = 1.0;
+  Eigen::Quaterniond quat_msg(tr_map2base.block<3, 3>(0, 0));
 
-  this->tf_broadcaster_.sendTransform(this->transform_msg_);
-  ////////////////////////////////////////////////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////
+  this->localization_Odometry_msg_.header.seq = id;
+  this->localization_Odometry_msg_.header.stamp = ros::Time::now();
+  this->localization_Odometry_msg_.header.frame_id = "map";
+  this->localization_Odometry_msg_.child_frame_id = "base_link";
+  this->localization_Odometry_msg_.pose.pose.position.x = tr_map2base(0, 3);
+  this->localization_Odometry_msg_.pose.pose.position.y = tr_map2base(1, 3);
+  this->localization_Odometry_msg_.pose.pose.position.z = tr_map2base(2, 3);
 
+  this->localization_Odometry_msg_.pose.pose.orientation.x = quat_msg.x();
+  this->localization_Odometry_msg_.pose.pose.orientation.y = quat_msg.y();
+  this->localization_Odometry_msg_.pose.pose.orientation.z = quat_msg.z();
+  this->localization_Odometry_msg_.pose.pose.orientation.w = quat_msg.w();
 
+  this->localization_publisher_.publish(this->localization_Odometry_msg_);
 
   id++;
 

@@ -8,6 +8,15 @@ public:
 	OptimizationProcess(void);
 	~OptimizationProcess() { }
 
+	void addMapToOdom (Pose3dWithCovariance map2odom_tf){
+		map2odom_tf_ = map2odom_tf;
+	}
+	void addPointConstraint (PointsConstraint constraints_pt){
+		constraints_pt_.push_back(constraints_pt);
+		if (constraints_pt_.size() > window_size_){
+			constraints_pt_.erase(constraints_pt_.begin());
+		}
+	}
 	void addOdometryConstraint (OdometryConstraint constraint_odom){
 		constraints_odom_.push_back(constraint_odom);
 		if (constraints_odom_.size() > window_size_){
@@ -38,7 +47,13 @@ public:
 	Trajectory getTrajectoryOdom (void){
 		return trajectory_odom_;
 	}
+	Pose3dWithCovariance getMapToOdom (void){
+		return map2odom_tf_;
+	}
 
+	void generatePointResiduals (ceres::LossFunction* loss_function,
+			                     ceres::LocalParameterization* quaternion_local_parameterization,
+								 ceres::Problem* problem);
 	void generateOdomResiduals (ceres::LossFunction* loss_function,
 			                    ceres::LocalParameterization* quaternion_local_parameterization,
 								ceres::Problem* problem);
@@ -49,19 +64,38 @@ public:
 	void estimateCovariance (ceres::Problem* problem);
 	void propagateState (size_t index);
 
+	bool checkOptimization (void);
+
 	Pose3dWithCovariance parsePose2dToPose3d (size_t id, double x, double y, double w, Eigen::Matrix<double, 6, 6> cov);
 
+
+
 private:
+	PointsConstraintVector constraints_pt_;
 	OdometryConstraintsVector constraints_odom_;
 	PriorConstraintVector constraints_prior_;
 	Trajectory trajectory_odom_;
 	Trajectory trajectory_estimated_;
 
+	Pose3dWithCovariance map2odom_tf_;
+
 	int window_size_;
 };
 
 OptimizationProcess::OptimizationProcess(void) {
-	window_size_ = 50;
+
+    window_size_ = 50;
+
+    map2odom_tf_.id = 0;
+    map2odom_tf_.p.x() = 0.0;
+    map2odom_tf_.p.y() = 0.0;
+    map2odom_tf_.p.z() = 0.0;
+
+	Eigen::AngleAxisd yaw_angle(0.0, Eigen::Vector3d::UnitZ());
+	map2odom_tf_.q = yaw_angle;
+
+	map2odom_tf_.covariance = Eigen::Matrix<double, 6, 6>::Identity();
+
 	return;
 }
 
@@ -111,6 +145,48 @@ void OptimizationProcess::propagateState (size_t index)
         addPose3dToTrajectoryEstimated(propagated_pose);
 	}
 
+	return;
+}
+
+bool OptimizationProcess::checkOptimization (void){
+
+	bool is_valid = false;
+	double x_ini = constraints_pt_.at(0).landmark.x();
+	double y_ini = constraints_pt_.at(0).landmark.y();
+	double x_end = constraints_pt_.at(constraints_pt_.size()-1).landmark.x();
+	double y_end = constraints_pt_.at(constraints_pt_.size()-1).landmark.y();
+	double x_diff = x_end - x_ini;
+	double y_diff = y_end - y_ini;
+
+	std::cout << "STD FOR CHECK!!!: " << sqrt(x_diff*x_diff + y_diff*y_diff) << std::endl;
+
+	if (sqrt(x_diff*x_diff + y_diff*y_diff) > 3.0) is_valid = true;
+
+	return is_valid;
+}
+
+void OptimizationProcess::generatePointResiduals(ceres::LossFunction* loss_function,
+		                                         ceres::LocalParameterization* quaternion_local_parameterization,
+												 ceres::Problem* problem)
+{
+	//// Generate residuals
+	for (int j = 0; j < constraints_pt_.size(); j++){
+
+		size_t index = j;
+
+		//problem->AddParameterBlock(trajectory_estimated_.at(index).p.data(), 3); // for cov estimation
+		//problem->AddParameterBlock(trajectory_estimated_.at(index).q.coeffs().data(), 4);
+
+		ceres::CostFunction* cost_function_pt = PointsErrorTerm::Create(constraints_pt_.at(j).detection,
+																		constraints_pt_.at(j).landmark,
+																		constraints_pt_.at(j).information);
+
+		problem->AddResidualBlock(cost_function_pt,
+								  loss_function,
+								  map2odom_tf_.p.data(),
+								  map2odom_tf_.q.coeffs().data());
+		problem->SetParameterization(map2odom_tf_.q.coeffs().data(), quaternion_local_parameterization);
+	}
 	return;
 }
 

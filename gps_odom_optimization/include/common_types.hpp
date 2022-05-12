@@ -5,6 +5,22 @@
 #include <Eigen/Dense>
 
 /**
+ * @brief PointsConstraint: The Constraint for points associations in the pose graph
+ */
+struct PointsConstraint {
+    size_t id;
+
+    // Associate data
+    Eigen::Vector3d detection;
+    Eigen::Vector3d landmark;
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    // Covariance and information matrix (inverse of covariance)
+    Eigen::Matrix<double, 3, 3> covariance;
+    Eigen::Matrix<double, 3, 3> information;
+};
+
+/**
  * @brief OdometryConstraint: The Constraint for odometry in the pose graph
  */
 struct OdometryConstraint {
@@ -35,6 +51,7 @@ struct PriorConstraint {
 };
 
 using Pose3dWithCovariance = PriorConstraint;
+using PointsConstraintVector = std::vector<PointsConstraint>;
 using PriorConstraintVector = std::vector<PriorConstraint>;
 using OdometryConstraintsVector = std::vector<OdometryConstraint>;
 using Trajectory = std::vector<Pose3dWithCovariance>;
