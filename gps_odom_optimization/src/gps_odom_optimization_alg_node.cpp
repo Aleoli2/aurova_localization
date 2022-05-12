@@ -150,23 +150,14 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
 	  if (this->optimization_->checkOptimization()){
 		  ////////////////////////////////////////////////////////////////////////////////
 		  //// COMPUTE OPTIMIZATION PROBLEM
-		  double ini, end, inter;
-		  ini = ros::Time::now().toSec();
-
 		  // residuals generation
 		  ceres::Problem problem;
 		  ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
 		  ceres::LossFunction* loss_function = new ceres::HuberLoss(0.01); //nullptr;//new ceres::HuberLoss(0.01);
 		  this->optimization_->generatePointResiduals(loss_function, quaternion_local_parameterization, &problem);
 
-		  inter = ros::Time::now().toSec();
-		  ROS_INFO("DURACION RESIDUALS: %f", inter - ini);
-
 		  // solve optimization problem
 		  this->optimization_->solveOptimizationProblem(&problem);
-		  // loop time
-		  end = ros::Time::now().toSec();
-		  ROS_INFO("DURACION OPTIMIZACION: %f", end - inter);
 		  ////////////////////////////////////////////////////////////////////////////////
 		  ////////////////////////////////////////////////////////////////////////////////
 	  }

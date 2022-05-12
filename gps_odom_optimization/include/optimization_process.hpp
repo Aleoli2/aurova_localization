@@ -158,7 +158,7 @@ bool OptimizationProcess::checkOptimization (void){
 	double x_diff = x_end - x_ini;
 	double y_diff = y_end - y_ini;
 
-	std::cout << "STD FOR CHECK!!!: " << sqrt(x_diff*x_diff + y_diff*y_diff) << std::endl;
+	//std::cout << "STD FOR CHECK!!!: " << sqrt(x_diff*x_diff + y_diff*y_diff) << std::endl;
 
 	if (sqrt(x_diff*x_diff + y_diff*y_diff) > 3.0) is_valid = true;
 
@@ -238,9 +238,9 @@ void OptimizationProcess::solveOptimizationProblem(ceres::Problem* problem)
     options.max_num_iterations = 100;
     options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
     ceres::Solver::Summary summary;
-    std::cout << "Pre-solve" << std::endl;
+    //std::cout << "Pre-solve" << std::endl;
     ceres::Solve(options, problem, &summary);
-    std::cout << "Post-solve" << std::endl;
+    //std::cout << "Post-solve" << std::endl;
     //std::cout << summary.FullReport() << '\n';
 	return;
 }
