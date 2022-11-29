@@ -66,7 +66,7 @@ catkin_package(
 # ******************************************************************** 
 #      Add system and labrobotica run time dependencies here
 # ******************************************************************** 
-#  DEPENDS Eigen
+  DEPENDS Ceres_LIBRARIES
 )
 
 ###########
@@ -79,7 +79,14 @@ catkin_package(
 include_directories(include)
 include_directories(${catkin_INCLUDE_DIRS})
 include_directories(${EIGEN_INCLUDE_DIRS})
-include_directories(${CERES_INCLUDE_DIRS})
+include_directories(${CERES_INCLUDE_DIRS}) 
+
+link_directories(
+  include
+  ${PCL_LIBRARY_DIRS}
+  ${CERES_LIBRARY_DIRS}
+)
+
 # include_directories(${<dependency>_INCLUDE_DIRS})
 
 ## Declare a cpp library
