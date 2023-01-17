@@ -41,7 +41,7 @@ Parameters:
 * ~pose_simulation/var_z (default: null): Variance in z axis.
 * ~pose_simulation/var_w (default: null): Variance in yaw component. 
 
-** gps_odom_optimization **
+**gps_odom_optimization**
 This package contains a node that, as input, reads the topics /odometry_gps and /odom, of type nav_msgs::Odometry. This node fuses this sources using a Gauss-Newton (GN) non-linear least squares. The node output is published in the topic /localization (that is the final output of our fusion system) of type nav_msgs::Odometry.
 
 Parameters:
