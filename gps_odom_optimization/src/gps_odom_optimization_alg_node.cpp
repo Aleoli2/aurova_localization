@@ -8,10 +8,14 @@ GpsOdomOptimizationAlgNode::GpsOdomOptimizationAlgNode(void) :
   this->optimization_ = new OptimizationProcess();
   if(!this->private_node_handle_.getParam("rate", this->config_.rate))
   {
-	ROS_WARN("GpsOdomOptimizationAlgNode::GpsOdomOptimizationAlgNode: param 'rate' not found");
+	  ROS_WARN("GpsOdomOptimizationAlgNode::GpsOdomOptimizationAlgNode: param 'rate' not found");
   }
   else
-	this->setRate(this->config_.rate);
+	  this->setRate(this->config_.rate);
+  this->public_node_handle_.param("x_model", this->config_.x_model,0.1);
+  this->public_node_handle_.param("y_model", this->config_.y_model,0.1);
+  this->public_node_handle_.param("theta_model", this->config_.theta_model,0.1);
+  this->public_node_handle_.param("namespace", this->ns, std::string(""));
 
   // [init publishers]
   this->localization_publisher_ = this->public_node_handle_.advertise<nav_msgs::Odometry>("localization", 1);
@@ -64,7 +68,7 @@ void GpsOdomOptimizationAlgNode::odometry_gps_callback(const nav_msgs::Odometry:
   this->alg_.lock();
   this->odometry_gps_mutex_enter();
 
-  this->gps_odom_msg_.pose = msg->pose;
+  this->gps_odom_msg_ = *msg;
   this->gps_received_ = true;
 
   //unlock previously blocked shared variables
@@ -97,7 +101,7 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   tf::StampedTransform tf_odom2base;
   try
   {
-    this->tf_listener_.lookupTransform("odom", "base_link", ros::Time(0), tf_odom2base);
+    this->tf_listener_.lookupTransform(this->ns+"odom", this->ns+"base_link", ros::Time(0), tf_odom2base);
   }
   catch (tf::TransformException &ex)
   {
@@ -140,8 +144,19 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
 	  constraint_pt.landmark.y() = y_gps;
 	  constraint_pt.landmark.z() = 0.0;
 
-	  constraint_pt.covariance = Eigen::Matrix<double, 3, 3>::Identity();
+    //Inverse square root matrix of the covariance.
+    constraint_pt.covariance=Eigen::Matrix<double, 3, 3>::Identity();
+    
 	  constraint_pt.information = Eigen::Matrix<double, 3, 3>::Identity();
+    double A=this->gps_odom_msg_.pose.covariance[0], B=this->gps_odom_msg_.pose.covariance[1],
+    C=this->gps_odom_msg_.pose.covariance[6], D=this->gps_odom_msg_.pose.covariance[7],
+    t=sqrt(A+D+2*sqrt(D*A-B*C));
+    double A2=A+sqrt(A*D-B*C)/t, B2=B/t, C2=C/t, D2=C+sqrt(A*D-B*C)/t; 
+
+    constraint_pt.information(0,0) =D2/(A2*D2-B2*C2);
+    constraint_pt.information(0,1) =-B2/(A2*D2-B2*C2);
+    constraint_pt.information(1,0) =-C2/(A2*D2-B2*C2);
+    constraint_pt.information(1,1) =A2/(A2*D2-B2*C2);
 
 	  this->optimization_->addPointConstraint(constraint_pt);
 	  ////////////////////////////////////////////////////////////////////////////////
@@ -158,9 +173,21 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
 
 		  // solve optimization problem
 		  this->optimization_->solveOptimizationProblem(&problem);
+      this->optimization_->estimateCovariance(&problem);
+      Covariance=this->optimization_->getMapToOdom().covariance;
 		  ////////////////////////////////////////////////////////////////////////////////
 		  ////////////////////////////////////////////////////////////////////////////////
 	  }
+  }
+
+  else{
+    //Update covariance, if the robot isn't stationary.
+    double speed_x = (*msg).twist.twist.linear.x, speed_y = (*msg).twist.twist.linear.y;
+    if(sqrt(pow(speed_x,2)+pow(speed_y,2))>0.01){
+      Covariance(0,0)+=this->config_.x_model;
+      Covariance(1,1)+=this->config_.y_model;
+      Covariance(5,5)+=this->config_.theta_model;
+    } 
   }
 
 
@@ -182,7 +209,7 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   Eigen::Quaterniond quat_final(tr_map2odom.block<3, 3>(0, 0));
 
   this->transform_msg_.header.frame_id = "map";
-  this->transform_msg_.child_frame_id = "odom";
+  this->transform_msg_.child_frame_id = this->ns+"odom";
   this->transform_msg_.header.stamp = ros::Time::now();
 
   this->transform_msg_.transform.translation.x = tr_map2odom(0, 3);
@@ -206,7 +233,7 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   this->localization_Odometry_msg_.header.seq = id;
   this->localization_Odometry_msg_.header.stamp = ros::Time::now();
   this->localization_Odometry_msg_.header.frame_id = "map";
-  this->localization_Odometry_msg_.child_frame_id = "base_link";
+  this->localization_Odometry_msg_.child_frame_id = this->ns+"base_link";
   this->localization_Odometry_msg_.pose.pose.position.x = tr_map2base(0, 3);
   this->localization_Odometry_msg_.pose.pose.position.y = tr_map2base(1, 3);
   this->localization_Odometry_msg_.pose.pose.position.z = tr_map2base(2, 3);
@@ -215,6 +242,14 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   this->localization_Odometry_msg_.pose.pose.orientation.y = quat_msg.y();
   this->localization_Odometry_msg_.pose.pose.orientation.z = quat_msg.z();
   this->localization_Odometry_msg_.pose.pose.orientation.w = quat_msg.w();
+
+  
+  this->localization_Odometry_msg_.pose.covariance[0]=Covariance(0,0);
+  this->localization_Odometry_msg_.pose.covariance[1]=Covariance(0,1);
+  this->localization_Odometry_msg_.pose.covariance[6]=Covariance(1,0);
+  this->localization_Odometry_msg_.pose.covariance[7]=Covariance(1,1);
+  this->localization_Odometry_msg_.pose.covariance[14]=1;
+  this->localization_Odometry_msg_.pose.covariance[35]=Covariance(5,5);
 
   this->localization_publisher_.publish(this->localization_Odometry_msg_);
 

@@ -54,6 +54,8 @@ class GpsOdomOptimizationAlgNode : public algorithm_base::IriBaseAlgorithm<GpsOd
 	bool gps_received_;
 	OptimizationProcessPtr optimization_;
 
+  Eigen::Matrix<double,6,6> Covariance; 
+
     // [publisher attributes]
     tf::TransformBroadcaster tf_broadcaster_;
     geometry_msgs::TransformStamped transform_msg_;
@@ -94,6 +96,7 @@ class GpsOdomOptimizationAlgNode : public algorithm_base::IriBaseAlgorithm<GpsOd
     * Is updated everytime function config_update() is called.
     */
     Config config_;
+    std::string ns;
   public:
    /**
     * \brief Constructor
