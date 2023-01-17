@@ -1,6 +1,6 @@
 ### Example of usage:
 
-You can run an example following the instructions in: [application_navigation](https://github.com/AUROVA-LAB/application_navigation) and [application_localization](https://github.com/AUROVA-LAB/application_localization).
+You can run an example following the instructions in [applications](https://github.com/AUROVA-LAB/applications) (Examples).
 
 # aurova_localization
 Metapackage for localization nodes in AUROVA group. Each node contain a different localization algorithim. Compiling this metapackage into ROS will compile all the packages at once. This metapackage is grouped as a project for eclipse C++. Each package contains a "name_doxygen_config" configuration file for generate doxygen documentation. The packages contained in this metapackage are:
@@ -41,4 +41,9 @@ Parameters:
 * ~pose_simulation/var_z (default: null): Variance in z axis.
 * ~pose_simulation/var_w (default: null): Variance in yaw component. 
 
-**ekf_loose_integration (INCOMPLETED/DEPRECATED!!)**  
+** gps_odom_optimization **
+This package contains a node that, as input, reads the topics /odometry_gps and /odom, of type nav_msgs::Odometry. This node fuses this sources using a Gauss-Newton (GN) non-linear least squares. The node output is published in the topic /localization (that is the final output of our fusion system) of type nav_msgs::Odometry.
+
+Parameters:
+* ~gps_odom_optimization/frame_id (default: ""): Main coordinates frame for vehicle localization (usually "map").
+* ~gps_odom_optimization/child_id (default: ""): Coordinates frame for odometry (usually "odom").
