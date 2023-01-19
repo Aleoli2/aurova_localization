@@ -97,7 +97,7 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   tf::StampedTransform tf_odom2base;
   try
   {
-    this->tf_listener_.lookupTransform("odom", "base_link", ros::Time(0), tf_odom2base);
+    this->tf_listener_.lookupTransform("odom", "gps", ros::Time(0), tf_odom2base);
   }
   catch (tf::TransformException &ex)
   {
