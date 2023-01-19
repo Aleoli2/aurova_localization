@@ -206,7 +206,7 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   this->localization_Odometry_msg_.header.seq = id;
   this->localization_Odometry_msg_.header.stamp = ros::Time::now();
   this->localization_Odometry_msg_.header.frame_id = "map";
-  this->localization_Odometry_msg_.child_frame_id = "base_link";
+  this->localization_Odometry_msg_.child_frame_id = "";
   this->localization_Odometry_msg_.pose.pose.position.x = tr_map2base(0, 3);
   this->localization_Odometry_msg_.pose.pose.position.y = tr_map2base(1, 3);
   this->localization_Odometry_msg_.pose.pose.position.z = tr_map2base(2, 3);
