@@ -12,9 +12,9 @@ GpsOdomOptimizationAlgNode::GpsOdomOptimizationAlgNode(void) :
   }
   else
 	  this->setRate(this->config_.rate);
-  this->public_node_handle_.param("x_model", this->config_.x_model,0.1);
-  this->public_node_handle_.param("y_model", this->config_.y_model,0.1);
-  this->public_node_handle_.param("theta_model", this->config_.theta_model,0.1);
+  this->public_node_handle_.param("x_model", this->config_.x_model,0.0);
+  this->public_node_handle_.param("y_model", this->config_.y_model,0.0);
+  this->public_node_handle_.param("theta_model", this->config_.theta_model,0.0);
   this->public_node_handle_.param("namespace", this->ns, std::string(""));
 
   // [init publishers]
@@ -116,8 +116,7 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   tr_odom2base.block<3, 3>(0, 0) = af_odom2base.linear();
   tr_odom2base.block<3, 1>(0, 3) = af_odom2base.translation();
 
-  double x = tr_odom2base(0, 3);
-  double y = tr_odom2base(1, 3);
+  
   ////////////////////////////////////////////////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////
 
@@ -125,6 +124,21 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   if (this->gps_received_){
 
 	  this->gps_received_ = false;
+
+    tf::StampedTransform tf_odom2gps;
+    try
+    {
+      this->tf_listener_.lookupTransform(this->ns+"odom", this->ns+"gps", ros::Time(0), tf_odom2gps);
+    }
+    catch (tf::TransformException &ex)
+    {
+      ROS_WARN("[draw_frames] TF exception cb_getGpsOdomMsg:\n%s", ex.what());
+    }
+    geometry_msgs::Pose pose_odom2gps;
+    tf::poseTFToMsg(tf_odom2gps, pose_odom2gps);
+
+    double x = pose_odom2gps.position.x;
+    double y = pose_odom2gps.position.y;
 
 	  ////////////////////////////////////////////////////////////////////////////////
 	  ///// GENERATE CURRENT GPS POSE

@@ -246,50 +246,42 @@ void OptimizationProcess::solveOptimizationProblem(ceres::Problem* problem)
 }
 
 
-/*
-
-
-
 void OptimizationProcess::estimateCovariance(ceres::Problem* problem)
 {
 	ceres::Covariance::Options options;
 	ceres::Covariance covariance(options);
 
-	size_t index = trajectory_estimated_.size() -1;
 
 	std::vector<std::pair<const double*, const double*> > covariance_blocks;
-	covariance_blocks.push_back(std::make_pair(trajectory_estimated_.at(index).p.data(), trajectory_estimated_.at(index).p.data()));
-	covariance_blocks.push_back(std::make_pair(trajectory_estimated_.at(index).q.coeffs().data(), trajectory_estimated_.at(index).q.coeffs().data()));
+	covariance_blocks.push_back(std::make_pair(map2odom_tf_.p.data(), map2odom_tf_.p.data()));
+	covariance_blocks.push_back(std::make_pair(map2odom_tf_.q.coeffs().data(), map2odom_tf_.q.coeffs().data()));
 
 	CHECK(covariance.Compute(covariance_blocks, problem));
 
 	double covariance_pp[3 * 3];
 	double covariance_qq[4 * 4];
-	covariance.GetCovarianceBlock(trajectory_estimated_.at(index).p.data(), trajectory_estimated_.at(index).p.data(), covariance_pp);
-	covariance.GetCovarianceBlock(trajectory_estimated_.at(index).q.coeffs().data(), trajectory_estimated_.at(index).q.coeffs().data(), covariance_qq);
+	covariance.GetCovarianceBlock(map2odom_tf_.p.data(), map2odom_tf_.p.data(), covariance_pp);
+	covariance.GetCovarianceBlock(map2odom_tf_.q.coeffs().data(), map2odom_tf_.q.coeffs().data(), covariance_qq);
 
-	trajectory_estimated_.at(index).covariance(0, 0) = covariance_pp[0];
-	trajectory_estimated_.at(index).covariance(0, 1) = covariance_pp[1];
-	trajectory_estimated_.at(index).covariance(1, 0) = covariance_pp[3];
-	trajectory_estimated_.at(index).covariance(1, 1) = covariance_pp[4];
+	map2odom_tf_.covariance(0, 0) = covariance_pp[0];
+	map2odom_tf_.covariance(0, 1) = covariance_pp[1];
+	map2odom_tf_.covariance(1, 0) = covariance_pp[3];
+	map2odom_tf_.covariance(1, 1) = covariance_pp[4];
 
-    // yaw (z-axis rotation)
-    double siny_cosp = 2 * (trajectory_estimated_.at(index).q.w() * trajectory_estimated_.at(index).q.z() + trajectory_estimated_.at(index).q.x() * trajectory_estimated_.at(index).q.y());
-    double cosy_cosp = 1 - 2 * (trajectory_estimated_.at(index).q.y() * trajectory_estimated_.at(index).q.y() + trajectory_estimated_.at(index).q.z() * trajectory_estimated_.at(index).q.z());
-    double yaw = std::atan2(siny_cosp, cosy_cosp);
+    // Covariance of yaw from quaternion covariance matrix. From Development of a Real-Time Attitude System Using a Quaternion Parameterization 
+	// and Non-Dedicated GPS Receivers by John B. Schleppe
+    double aux1= (pow(map2odom_tf_.q.y()+map2odom_tf_.q.z(),2)+pow(map2odom_tf_.q.w()+map2odom_tf_.q.x(),2));
+	double aux2= -(map2odom_tf_.q.z()+map2odom_tf_.q.y())/aux1;
+	double aux3= (map2odom_tf_.q.z()+map2odom_tf_.q.y())/aux1;
+	double aux4= (map2odom_tf_.q.w()+map2odom_tf_.q.x())/aux1;
+	double aux5= (map2odom_tf_.q.w()-map2odom_tf_.q.x())/aux1;
 
-    double x = covariance_qq[0];
-    double y = covariance_qq[5];
-    double z = covariance_qq[10];
-    double w = covariance_qq[15];
+	Eigen::Matrix<double,1,4> G {aux2-aux3, aux4+aux5,aux4-aux5,aux2+aux3};
+	Eigen::Matrix<double, 4, 4> C(covariance_qq);
 
-    // yaw (z-axis rotation)
-    siny_cosp = 2 * (w * z + x * y);
-    cosy_cosp = 1 - 2 * (y * y + z * z);
-    double yaw_cov = std::atan2(siny_cosp, cosy_cosp);
+		
 
-    trajectory_estimated_.at(index).covariance(5, 5) = yaw_cov * 10;
+    map2odom_tf_.covariance(5, 5) = G*C*G.transpose();
 
 	return;
 }
-*/
