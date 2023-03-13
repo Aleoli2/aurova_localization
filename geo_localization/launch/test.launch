@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+  <arg name="output"        default="screen"/>
+  <arg name="launch_prefix" default=""/>
+  <arg name="dr"            default="true"/>
+
+  <include file="$(find geo_localization)/launch/node.launch">
+    <arg name="node_name"     value="geo_localization"/>
+    <arg name="output"        value="$(arg output)"/>
+    <arg name="launch_prefix" value="$(arg launch_prefix)"/>
+  </include>
+
+  <node name="rqt_reconfigure_geo_localization"
+        pkg ="rqt_reconfigure"
+        type="rqt_reconfigure"
+        if  ="$(arg dr)"
+        args="geo_localization">
+  </node>
+
+</launch>
