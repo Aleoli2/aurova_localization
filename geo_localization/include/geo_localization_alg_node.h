@@ -27,6 +27,7 @@
 
 #include <iri_base_algorithm/iri_base_algorithm.h>
 #include <localization/interface_ap.h>
+#include <localization/latlong_utm.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
@@ -52,15 +53,18 @@
 class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocalizationAlgorithm>
 {
   private:
-
-  double lat_zero_; 
-  double lon_zero_;
-  std::string frame_id_;
-  static_data_representation::ConfigParams map_config_;
-  geometry_msgs::TransformStamped tf_to_utm_;
-  tf::TransformBroadcaster broadcaster_;
+  
+    double lat_zero_;
+    double lon_zero_;
+    std::string frame_id_;
+    static_data_representation::ConfigParams map_config_;
+    static_data_representation::PolylineMap map_;
+    geometry_msgs::TransformStamped tf_to_utm_;
+    tf::TransformBroadcaster broadcaster_;
+    visualization_msgs::MarkerArray marker_array_;
     
     // [publisher attributes]
+    ros::Publisher marker_pub_;
 
     // [subscriber attributes]
 
@@ -137,6 +141,13 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     * \brief Get transform from /utm to /current_frame.
     */
     void fromUtmTransform(void);
+
+  /**
+    * \brief Parse the information in map alg structure to visualization marker.
+    *
+    * @param marker is structure for visualization.
+    */
+    void parseMapToRosMarker(visualization_msgs::MarkerArray& marker_array);
 
     // [diagnostic functions]
     
