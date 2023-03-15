@@ -61,6 +61,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     static_data_representation::PolylineMap map_;
     geometry_msgs::TransformStamped tf_to_utm_;
     tf::TransformBroadcaster broadcaster_;
+    tf::TransformListener listener_;
     visualization_msgs::MarkerArray marker_array_;
     
     // [publisher attributes]
@@ -147,7 +148,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     *
     * @param marker is structure for visualization.
     */
-    void parseMapToRosMarker(visualization_msgs::MarkerArray& marker_array);
+    int parseMapToRosMarker(visualization_msgs::MarkerArray& marker_array);
 
     // [diagnostic functions]
     
