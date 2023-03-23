@@ -140,7 +140,7 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
   marker.scale.x = 0.4;
   marker.scale.y = 0.4;
   marker.scale.z = 0.05;
-  marker_line.scale.x = 0.1;
+  marker_line.scale.x = 0.4;
 
   // Set the color -- be sure to set alpha to something non-zero!
   marker.color.r = 0.0f;
