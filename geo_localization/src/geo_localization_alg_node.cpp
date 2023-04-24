@@ -18,6 +18,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
 
   //// Generate transform between frame_id and utm (lat/long zero requiered).
   this->fromUtmTransform();
+  this->mapToOdomInit();
   this->map_config_.utm2map_tr.x = this->tf_to_utm_.transform.translation.x;
   this->map_config_.utm2map_tr.y = this->tf_to_utm_.transform.translation.y;
 
@@ -26,6 +27,10 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   interface.readMapFromFile();
   this->map_ = interface.getMap();
 
+  //// Localization init
+  this->loc_config_.window_size = 50; // TODO: get from params
+  this->optimization_ = new geo_referencing::OptimizationProcess(this->loc_config_);
+
   //// Plot map in Rviz (TODO: put it on function).
   this->parseMapToRosMarker(this->marker_array_);
 
@@ -33,6 +38,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->marker_pub_ = this->public_node_handle_.advertise < visualization_msgs::MarkerArray > ("/map", 1);
   
   // [init subscribers]
+  this->odom_subscriber_ = this->public_node_handle_.subscribe("odom", 1, &GeoLocalizationAlgNode::odom_callback, this);
   
   // [init services]
   
@@ -65,12 +71,31 @@ void GeoLocalizationAlgNode::mainNodeThread(void)
   this->tf_to_utm_.header.seq = this->tf_to_utm_.header.seq + 1;
   this->tf_to_utm_.header.stamp = ros::Time::now();
   this->broadcaster_.sendTransform(this->tf_to_utm_);
+
+  this->tf_to_map_.header.seq = this->tf_to_map_.header.seq + 1;
+  this->tf_to_map_.header.stamp = ros::Time::now();
+  this->broadcaster_.sendTransform(this->tf_to_map_);
+
   this->marker_pub_.publish(this->marker_array_);
   
   this->alg_.unlock();
 }
 
 /*  [subscriber callbacks] */
+void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& msg)
+{
+  //ROS_INFO("GpsOdomOptimizationAlgNode::odom_callback: New Message Received");
+
+  //use appropiate mutex to shared variables if necessary
+  this->alg_.lock();
+  //this->odom_mutex_enter();
+
+  
+
+  //unlock previously blocked shared variables
+  this->alg_.unlock();
+  //this->odom_mutex_exit();
+}
 
 /*  [service callbacks] */
 
@@ -109,6 +134,23 @@ void GeoLocalizationAlgNode::fromUtmTransform(void)
   this->tf_to_utm_.transform.rotation = tf::createQuaternionMsgFromYaw(0.0/*3.1415 / 2.0*/);
 
   this->broadcaster_.sendTransform(this->tf_to_utm_);
+
+  return;
+}
+
+void GeoLocalizationAlgNode::mapToOdomInit(void)
+{
+
+  this->tf_to_map_.header.frame_id = this->frame_id_;
+  this->tf_to_map_.child_frame_id = "odom";
+  this->tf_to_map_.header.stamp = ros::Time::now();
+
+  this->tf_to_map_.transform.translation.x = 0.0;
+  this->tf_to_map_.transform.translation.y = 0.0;
+  this->tf_to_map_.transform.translation.z = 0.0;
+  this->tf_to_map_.transform.rotation = tf::createQuaternionMsgFromYaw(0.0);
+
+  this->broadcaster_.sendTransform(this->tf_to_map_);
 
   return;
 }

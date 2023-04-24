@@ -27,9 +27,11 @@
 
 #include <iri_base_algorithm/iri_base_algorithm.h>
 #include <localization/interface_ap.h>
+#include <localization/optimization_process.h>
 #include <localization/latlong_utm.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
+#include <nav_msgs/Odometry.h>
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "geometry_msgs/PoseStamped.h"
 //#include "nav_msgs/Odometry.h"
@@ -59,7 +61,10 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     std::string frame_id_;
     static_data_representation::ConfigParams map_config_;
     static_data_representation::PolylineMap map_;
+    geo_referencing::OptimizationProcess *optimization_;
+    geo_referencing::ConfigParams loc_config_;
     geometry_msgs::TransformStamped tf_to_utm_;
+    geometry_msgs::TransformStamped tf_to_map_;
     tf::TransformBroadcaster broadcaster_;
     tf::TransformListener listener_;
     visualization_msgs::MarkerArray marker_array_;
@@ -68,6 +73,9 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     ros::Publisher marker_pub_;
 
     // [subscriber attributes]
+    ros::Subscriber odom_subscriber_;
+
+    void odom_callback(const nav_msgs::Odometry::ConstPtr& msg);
 
     // [service attributes]
 
@@ -139,9 +147,14 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     void addNodeDiagnostics(void);
 
   /**
-    * \brief Get transform from /utm to /current_frame.
+    * \brief Get transform from /utm to /current_frame(map).
     */
     void fromUtmTransform(void);
+
+  /**
+    * \brief Get transform from /current_frame(map) to /odom.
+    */
+    void mapToOdomInit(void);
 
   /**
     * \brief Parse the information in map alg structure to visualization marker.
