@@ -30,6 +30,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   //// Localization init
   this->loc_config_.window_size = 50; // TODO: get from params
   this->optimization_ = new geo_referencing::OptimizationProcess(this->loc_config_);
+  this->optimization_->initializeState();
 
   //// Plot map in Rviz (TODO: put it on function).
   this->parseMapToRosMarker(this->marker_array_);
@@ -38,7 +39,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->marker_pub_ = this->public_node_handle_.advertise < visualization_msgs::MarkerArray > ("/map", 1);
   
   // [init subscribers]
-  this->odom_subscriber_ = this->public_node_handle_.subscribe("odom", 1, &GeoLocalizationAlgNode::odom_callback, this);
+  this->odom_subscriber_ = this->public_node_handle_.subscribe("/odom", 1, &GeoLocalizationAlgNode::odom_callback, this);
   
   // [init services]
   
@@ -85,16 +86,61 @@ void GeoLocalizationAlgNode::mainNodeThread(void)
 void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
   //ROS_INFO("GpsOdomOptimizationAlgNode::odom_callback: New Message Received");
-
-  //use appropiate mutex to shared variables if necessary
   this->alg_.lock();
-  //this->odom_mutex_enter();
 
-  
+  static bool exec = false;
+  static nav_msgs::Odometry msg_prev;
 
-  //unlock previously blocked shared variables
+  if (exec){ // To avoid firs execution.
+
+    //// 1) Propagate state by using odometry differential. 
+    Eigen::Matrix<double, 3, 1> p_a(msg_prev.pose.pose.position.x, msg_prev.pose.pose.position.y, 0.0);
+    Eigen::Quaternion<double> q_a(msg_prev.pose.pose.orientation.z, 0.0, 0.0, msg_prev.pose.pose.orientation.w);
+    Eigen::Matrix<double, 3, 1> p_b(msg->pose.pose.position.x, msg->pose.pose.position.y, 0.0);
+    Eigen::Quaternion<double> q_b(msg->pose.pose.orientation.z, 0.0, 0.0, msg->pose.pose.orientation.w);
+    int id = msg->header.seq;
+    
+    this->optimization_->propagateState (p_a, q_a, p_b, q_b, id);
+
+    //// 2) Generate odometry constraint
+    geo_referencing::OdometryConstraint constraint_odom;
+    constraint_odom.id_begin = msg_prev.header.seq;
+    constraint_odom.id_end = id;
+    constraint_odom.tf_q = q_a.conjugate() * q_b;
+    constraint_odom.tf_p = p_b - p_a;
+    constraint_odom.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
+    
+    this->optimization_->addOdometryConstraint (constraint_odom);
+
+
+    ///////////////////////////////////////////
+    //// DEBUG!!!
+    int size = this->optimization_->getTrajectoryEstimated().size();
+    std::cout << "SIZE: " << size << std::endl;
+    std::cout << "ID: " << id << std::endl;
+    std::cout << this->optimization_->getTrajectoryEstimated().at(size-1).p.x() << ", " 
+              << this->optimization_->getTrajectoryEstimated().at(size-1).p.y() << ", " 
+              << this->optimization_->getTrajectoryEstimated().at(size-1).p.z() << std::endl;
+    std::cout << this->optimization_->getTrajectoryEstimated().at(size-1).q.x() << ", " 
+              << this->optimization_->getTrajectoryEstimated().at(size-1).q.y() << ", " 
+              << this->optimization_->getTrajectoryEstimated().at(size-1).q.z() << ", " 
+              << this->optimization_->getTrajectoryEstimated().at(size-1).q.w() << std::endl;
+    ///////////////////////////////////////////
+
+  }else{
+    exec = true;
+  }
+
+  msg_prev.pose.pose.position.x = msg->pose.pose.position.x;
+  msg_prev.pose.pose.position.y = msg->pose.pose.position.y;
+  msg_prev.pose.pose.position.z = msg->pose.pose.position.z;
+  msg_prev.pose.pose.orientation.x = msg->pose.pose.orientation.x;
+  msg_prev.pose.pose.orientation.y = msg->pose.pose.orientation.y;
+  msg_prev.pose.pose.orientation.z = msg->pose.pose.orientation.z;
+  msg_prev.pose.pose.orientation.w = msg->pose.pose.orientation.w;
+  msg_prev.header.seq = msg->header.seq;;
+
   this->alg_.unlock();
-  //this->odom_mutex_exit();
 }
 
 /*  [service callbacks] */
