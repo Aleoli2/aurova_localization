@@ -71,6 +71,8 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     
     // [publisher attributes]
     ros::Publisher marker_pub_;
+    ros::Publisher localization_publisher_;
+    nav_msgs::Odometry localization_msg_;
 
     // [subscriber attributes]
     ros::Subscriber odom_subscriber_;

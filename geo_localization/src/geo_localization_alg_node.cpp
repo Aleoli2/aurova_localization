@@ -36,6 +36,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->parseMapToRosMarker(this->marker_array_);
 
   // [init publishers]
+  this->localization_publisher_ = this->public_node_handle_.advertise<nav_msgs::Odometry>("/localization", 1);
   this->marker_pub_ = this->public_node_handle_.advertise < visualization_msgs::MarkerArray > ("/map", 1);
   
   // [init subscribers]
@@ -106,7 +107,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     geo_referencing::OdometryConstraint constraint_odom;
     constraint_odom.id_begin = msg_prev.header.seq;
     constraint_odom.id_end = id;
-    constraint_odom.tf_q = q_a.conjugate() * q_b;
+    constraint_odom.tf_q = q_b.inverse() * q_a;
     constraint_odom.tf_p = p_b - p_a;
     constraint_odom.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
     
@@ -116,6 +117,22 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     ///////////////////////////////////////////
     //// DEBUG!!!
     int size = this->optimization_->getTrajectoryEstimated().size();
+
+    this->localization_msg_.header.seq = id;
+    this->localization_msg_.header.stamp = ros::Time::now();
+    this->localization_msg_.header.frame_id = "map";
+    this->localization_msg_.child_frame_id = "";
+    this->localization_msg_.pose.pose.position.x = this->optimization_->getTrajectoryEstimated().at(size-1).p.x();
+    this->localization_msg_.pose.pose.position.y = this->optimization_->getTrajectoryEstimated().at(size-1).p.y();
+    this->localization_msg_.pose.pose.position.z = this->optimization_->getTrajectoryEstimated().at(size-1).p.z();
+
+    this->localization_msg_.pose.pose.orientation.x = this->optimization_->getTrajectoryEstimated().at(size-1).q.x();
+    this->localization_msg_.pose.pose.orientation.y = this->optimization_->getTrajectoryEstimated().at(size-1).q.y();
+    this->localization_msg_.pose.pose.orientation.z = this->optimization_->getTrajectoryEstimated().at(size-1).q.z();
+    this->localization_msg_.pose.pose.orientation.w = this->optimization_->getTrajectoryEstimated().at(size-1).q.w();
+
+    this->localization_publisher_.publish(this->localization_msg_);
+
     std::cout << "SIZE: " << size << std::endl;
     std::cout << "ID: " << id << std::endl;
     std::cout << this->optimization_->getTrajectoryEstimated().at(size-1).p.x() << ", " 
@@ -138,7 +155,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
   msg_prev.pose.pose.orientation.y = msg->pose.pose.orientation.y;
   msg_prev.pose.pose.orientation.z = msg->pose.pose.orientation.z;
   msg_prev.pose.pose.orientation.w = msg->pose.pose.orientation.w;
-  msg_prev.header.seq = msg->header.seq;;
+  msg_prev.header.seq = msg->header.seq;
 
   this->alg_.unlock();
 }
