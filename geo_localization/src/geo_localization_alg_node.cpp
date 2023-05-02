@@ -89,6 +89,9 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
   //ROS_INFO("GpsOdomOptimizationAlgNode::odom_callback: New Message Received");
   this->alg_.lock();
 
+  double ini, end;
+  ini = ros::Time::now().toSec();
+
   static bool exec = false;
   static nav_msgs::Odometry msg_prev;
 
@@ -110,9 +113,12 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     constraint_odom.tf_q = q_b.inverse() * q_a;
     constraint_odom.tf_p = p_b - p_a;
     constraint_odom.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
-    
+    constraint_odom.information = constraint_odom.covariance.inverse();
+
     this->optimization_->addOdometryConstraint (constraint_odom);
 
+    //// 3) Compute optimization problem
+    this->computeOptimizationProblem();
 
     ///////////////////////////////////////////
     //// DEBUG!!!
@@ -156,6 +162,10 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
   msg_prev.pose.pose.orientation.z = msg->pose.pose.orientation.z;
   msg_prev.pose.pose.orientation.w = msg->pose.pose.orientation.w;
   msg_prev.header.seq = msg->header.seq;
+
+  // loop time
+  end = ros::Time::now().toSec();
+  std::cout << "TIME LOOP: " << end - ini << std::endl;
 
   this->alg_.unlock();
 }
@@ -294,6 +304,23 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
   }
 
   return 0;
+}
+
+void GeoLocalizationAlgNode::computeOptimizationProblem (void)
+{
+	//////////////////////////////////////////////////////////////////////
+	//// RESIDUALS GENERATION
+	size_t index = this->optimization_->getTrajectoryEstimated().size() - 1;
+	ceres::Problem problem;
+	ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
+	ceres::LossFunction* loss_function = new ceres::HuberLoss(0.01); //nullptr;//new ceres::HuberLoss(0.01);
+	if (index > 0) this->optimization_->generateOdomResiduals(loss_function, quaternion_local_parameterization, &problem);
+
+	//////////////////////////////////////////////////////////////////////
+	//// SOLVE OPTIMIZATION PROBLEM
+	this->optimization_->solveOptimizationProblem(&problem);
+
+  return;
 }
 
 /* main function */

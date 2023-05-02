@@ -148,22 +148,11 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     */
     void addNodeDiagnostics(void);
 
-  /**
-    * \brief Get transform from /utm to /current_frame(map).
-    */
+    //// NEW LOCAL FUNCTIONS
     void fromUtmTransform(void);
-
-  /**
-    * \brief Get transform from /current_frame(map) to /odom.
-    */
     void mapToOdomInit(void);
-
-  /**
-    * \brief Parse the information in map alg structure to visualization marker.
-    *
-    * @param marker is structure for visualization.
-    */
     int parseMapToRosMarker(visualization_msgs::MarkerArray& marker_array);
+    void computeOptimizationProblem (void);
 
     // [diagnostic functions]
     

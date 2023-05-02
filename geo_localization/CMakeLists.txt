@@ -23,6 +23,7 @@ find_package(catkin REQUIRED COMPONENTS
 # ******************************************************************** 
 # find_package(<dependency> REQUIRED)
 find_package(PCL REQUIRED)
+find_package(Ceres REQUIRED)
 
 # ******************************************************************** 
 #           Add topic, service and action definition here
@@ -88,7 +89,14 @@ include_directories(include)
 include_directories(${catkin_INCLUDE_DIRS})
 INCLUDE_DIRECTORIES(${EIGEN_INCLUDE_DIR})
 include_directories(${PCL_INCLUDE_DIRS})
+include_directories(${CERES_INCLUDE_DIRS}) 
 # include_directories(${<dependency>_INCLUDE_DIRS})
+
+link_directories(
+  include
+  ${PCL_LIBRARY_DIRS}
+  ${CERES_LIBRARY_DIRS}
+)
 
 ## Declare a cpp library
 # add_library(${PROJECT_NAME} <list of source files>)
@@ -102,6 +110,7 @@ add_executable(${PROJECT_NAME} src/geo_localization_alg.cpp src/geo_localization
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
 TARGET_LINK_LIBRARIES(${PROJECT_NAME} localization)
 target_link_libraries(${PROJECT_NAME} ${PCL_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} ${CERES_LIBRARIES})
 # target_link_libraries(${PROJECT_NAME} ${<dependency>_LIBRARIES})
 
 # ******************************************************************** 
