@@ -76,8 +76,10 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
 
     // [subscriber attributes]
     ros::Subscriber odom_subscriber_;
+    ros::Subscriber gnss_subscriber_;
 
     void odom_callback(const nav_msgs::Odometry::ConstPtr& msg);
+    void gnss_callback(const nav_msgs::Odometry::ConstPtr& msg);
 
     // [service attributes]
 

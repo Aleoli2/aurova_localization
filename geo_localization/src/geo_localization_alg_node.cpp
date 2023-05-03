@@ -28,7 +28,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->map_ = interface.getMap();
 
   //// Localization init
-  this->loc_config_.window_size = 50; // TODO: get from params
+  this->loc_config_.window_size = 500; // TODO: get from params
   this->optimization_ = new geo_referencing::OptimizationProcess(this->loc_config_);
   this->optimization_->initializeState();
 
@@ -41,6 +41,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   
   // [init subscribers]
   this->odom_subscriber_ = this->public_node_handle_.subscribe("/odom", 1, &GeoLocalizationAlgNode::odom_callback, this);
+  this->gnss_subscriber_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &GeoLocalizationAlgNode::gnss_callback, this);
   
   // [init services]
   
@@ -74,9 +75,9 @@ void GeoLocalizationAlgNode::mainNodeThread(void)
   this->tf_to_utm_.header.stamp = ros::Time::now();
   this->broadcaster_.sendTransform(this->tf_to_utm_);
 
-  this->tf_to_map_.header.seq = this->tf_to_map_.header.seq + 1;
-  this->tf_to_map_.header.stamp = ros::Time::now();
-  this->broadcaster_.sendTransform(this->tf_to_map_);
+  //this->tf_to_map_.header.seq = this->tf_to_map_.header.seq + 1;
+  //this->tf_to_map_.header.stamp = ros::Time::now();
+  //this->broadcaster_.sendTransform(this->tf_to_map_);
 
   this->marker_pub_.publish(this->marker_array_);
   
@@ -86,7 +87,7 @@ void GeoLocalizationAlgNode::mainNodeThread(void)
 /*  [subscriber callbacks] */
 void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& msg)
 {
-  //ROS_INFO("GpsOdomOptimizationAlgNode::odom_callback: New Message Received");
+  //ROS_INFO("GeoLocalizationAlgNode::odom_callback: New Message Received");
   this->alg_.lock();
 
   double ini, end;
@@ -99,9 +100,9 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     //// 1) Propagate state by using odometry differential. 
     Eigen::Matrix<double, 3, 1> p_a(msg_prev.pose.pose.position.x, msg_prev.pose.pose.position.y, 0.0);
-    Eigen::Quaternion<double> q_a(msg_prev.pose.pose.orientation.z, 0.0, 0.0, msg_prev.pose.pose.orientation.w);
+    Eigen::Quaternion<double> q_a(msg_prev.pose.pose.orientation.w, 0.0, 0.0, msg_prev.pose.pose.orientation.z);
     Eigen::Matrix<double, 3, 1> p_b(msg->pose.pose.position.x, msg->pose.pose.position.y, 0.0);
-    Eigen::Quaternion<double> q_b(msg->pose.pose.orientation.z, 0.0, 0.0, msg->pose.pose.orientation.w);
+    Eigen::Quaternion<double> q_b(msg->pose.pose.orientation.w, 0.0, 0.0, msg->pose.pose.orientation.z);
     int id = msg->header.seq;
     
     this->optimization_->propagateState (p_a, q_a, p_b, q_b, id);
@@ -110,8 +111,8 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     geo_referencing::OdometryConstraint constraint_odom;
     constraint_odom.id_begin = msg_prev.header.seq;
     constraint_odom.id_end = id;
-    constraint_odom.tf_q = q_b.inverse() * q_a;
-    constraint_odom.tf_p = p_b - p_a;
+    constraint_odom.tf_q = q_a.conjugate() * q_b;
+    constraint_odom.tf_p = q_a.conjugate() * (p_b - p_a);
     constraint_odom.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
     constraint_odom.information = constraint_odom.covariance.inverse();
 
@@ -120,8 +121,8 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     //// 3) Compute optimization problem
     this->computeOptimizationProblem();
 
-    ///////////////////////////////////////////
-    //// DEBUG!!!
+    ////////////////////////////////////////////////////////////////////////////////
+    //// REPRESENTATION (output)
     int size = this->optimization_->getTrajectoryEstimated().size();
 
     this->localization_msg_.header.seq = id;
@@ -138,22 +139,60 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->localization_msg_.pose.pose.orientation.w = this->optimization_->getTrajectoryEstimated().at(size-1).q.w();
 
     this->localization_publisher_.publish(this->localization_msg_);
+    ////////////////////////////////////////////////////////////////////////////////
 
-    std::cout << "SIZE: " << size << std::endl;
-    std::cout << "ID: " << id << std::endl;
-    std::cout << this->optimization_->getTrajectoryEstimated().at(size-1).p.x() << ", " 
-              << this->optimization_->getTrajectoryEstimated().at(size-1).p.y() << ", " 
-              << this->optimization_->getTrajectoryEstimated().at(size-1).p.z() << std::endl;
-    std::cout << this->optimization_->getTrajectoryEstimated().at(size-1).q.x() << ", " 
-              << this->optimization_->getTrajectoryEstimated().at(size-1).q.y() << ", " 
-              << this->optimization_->getTrajectoryEstimated().at(size-1).q.z() << ", " 
-              << this->optimization_->getTrajectoryEstimated().at(size-1).q.w() << std::endl;
-    ///////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////////////
+    ///// generate MAP -> ODOM transform
+    // generate 4x4 transform matrix odom2base
+    Eigen::Matrix4d tr_odom2base;
+    tr_odom2base.setIdentity();
+    Eigen::Quaterniond rot1(msg->pose.pose.orientation.w,
+                            msg->pose.pose.orientation.x,
+                            msg->pose.pose.orientation.y,
+                            msg->pose.pose.orientation.z);
+    tr_odom2base.block<3, 3>(0, 0) = rot1.toRotationMatrix();
+    tr_odom2base.block<3, 1>(0, 3) = Eigen::Vector3d(msg->pose.pose.position.x, 
+                                                     msg->pose.pose.position.y, 0.0);
+
+    // generate 4x4 transform matrix map2base
+    Eigen::Matrix4d tr_map2base;
+    tr_map2base.setIdentity();
+    Eigen::Quaterniond rot(this->optimization_->getTrajectoryEstimated().at(size-1).q.w(),
+                           this->optimization_->getTrajectoryEstimated().at(size-1).q.x(),
+                           this->optimization_->getTrajectoryEstimated().at(size-1).q.y(),
+                           this->optimization_->getTrajectoryEstimated().at(size-1).q.z());
+    tr_map2base.block<3, 3>(0, 0) = rot.toRotationMatrix();
+    tr_map2base.block<3, 1>(0, 3) = Eigen::Vector3d(this->optimization_->getTrajectoryEstimated().at(size-1).p.x(), 
+                                                    this->optimization_->getTrajectoryEstimated().at(size-1).p.y(), 0.0);
+
+    // given: odom2base * map2odom = map2base
+    // thenn: map2odom = map2base * odom2base^(-1)
+    Eigen::Matrix4d tr_map2odom;
+    tr_map2odom = tr_map2base * tr_odom2base.inverse();
+
+    Eigen::Quaterniond quat_final(tr_map2odom.block<3, 3>(0, 0));
+
+    this->tf_to_map_.header.frame_id = "map";
+    this->tf_to_map_.child_frame_id = "odom";
+    this->tf_to_map_.header.seq = this->tf_to_map_.header.seq + 1;
+    this->tf_to_map_.header.stamp = ros::Time::now();
+
+    this->tf_to_map_.transform.translation.x = tr_map2odom(0, 3);
+    this->tf_to_map_.transform.translation.y = tr_map2odom(1, 3);
+    this->tf_to_map_.transform.translation.z = tr_map2odom(2, 3);
+    this->tf_to_map_.transform.rotation.x = quat_final.x();
+    this->tf_to_map_.transform.rotation.y = quat_final.y();
+    this->tf_to_map_.transform.rotation.z = quat_final.z();
+    this->tf_to_map_.transform.rotation.w = quat_final.w();
+
+    this->broadcaster_.sendTransform(this->tf_to_map_);
+    ////////////////////////////////////////////////////////////////////////////////
 
   }else{
     exec = true;
   }
 
+  //// Save previous odometry msg.
   msg_prev.pose.pose.position.x = msg->pose.pose.position.x;
   msg_prev.pose.pose.position.y = msg->pose.pose.position.y;
   msg_prev.pose.pose.position.z = msg->pose.pose.position.z;
@@ -166,6 +205,24 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
   // loop time
   end = ros::Time::now().toSec();
   std::cout << "TIME LOOP: " << end - ini << std::endl;
+
+  this->alg_.unlock();
+}
+
+void GeoLocalizationAlgNode::gnss_callback(const nav_msgs::Odometry::ConstPtr& msg)
+{
+  //ROS_INFO("GeoLocalizationAlgNode::gnss_callback: New Message Received");
+  this->alg_.lock();
+
+  Eigen::Matrix<double, 3, 1> p(msg->pose.pose.position.x, msg->pose.pose.position.y, 0.0);
+
+  geo_referencing::PriorConstraint constraint_prior;
+  constraint_prior.id = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).id;
+  constraint_prior.p = p;
+  constraint_prior.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
+  constraint_prior.information = constraint_prior.covariance.inverse();
+
+  this->optimization_->addPriorConstraint (constraint_prior);
 
   this->alg_.unlock();
 }
@@ -315,6 +372,7 @@ void GeoLocalizationAlgNode::computeOptimizationProblem (void)
 	ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
 	ceres::LossFunction* loss_function = new ceres::HuberLoss(0.01); //nullptr;//new ceres::HuberLoss(0.01);
 	if (index > 0) this->optimization_->generateOdomResiduals(loss_function, quaternion_local_parameterization, &problem);
+  if (index > 0) this->optimization_->generatePriorResiduals(loss_function, quaternion_local_parameterization, &problem);
 
 	//////////////////////////////////////////////////////////////////////
 	//// SOLVE OPTIMIZATION PROBLEM
