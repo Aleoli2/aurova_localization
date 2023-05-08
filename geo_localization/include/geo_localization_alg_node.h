@@ -32,9 +32,10 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <nav_msgs/Odometry.h>
+#include <sensor_msgs/PointCloud2.h>
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "geometry_msgs/PoseStamped.h"
-//#include "nav_msgs/Odometry.h"
+#include <pcl_ros/point_cloud.h>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 #include <tf/tf.h>
@@ -59,8 +60,10 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     double lat_zero_;
     double lon_zero_;
     std::string frame_id_;
+    pcl::PointCloud<pcl::PointXYZ> last_detect_pcl_;
     static_data_representation::ConfigParams map_config_;
     static_data_representation::PolylineMap map_;
+    static_data_representation::InterfaceAP *interface_;
     geo_referencing::OptimizationProcess *optimization_;
     geo_referencing::ConfigParams loc_config_;
     geometry_msgs::TransformStamped tf_to_utm_;
@@ -72,14 +75,18 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     // [publisher attributes]
     ros::Publisher marker_pub_;
     ros::Publisher localization_publisher_;
+    ros::Publisher landmarks_publisher_;
+    ros::Publisher detection_publisher_;
     nav_msgs::Odometry localization_msg_;
 
     // [subscriber attributes]
     ros::Subscriber odom_subscriber_;
     ros::Subscriber gnss_subscriber_;
+    ros::Subscriber detc_subscriber_;
 
     void odom_callback(const nav_msgs::Odometry::ConstPtr& msg);
     void gnss_callback(const nav_msgs::Odometry::ConstPtr& msg);
+    void detc_callback(const sensor_msgs::PointCloud2::ConstPtr &msg);
 
     // [service attributes]
 

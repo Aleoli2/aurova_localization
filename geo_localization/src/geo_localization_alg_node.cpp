@@ -9,6 +9,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->public_node_handle_.getParam("/geo_localization/lon_zero", this->lon_zero_);
   this->public_node_handle_.getParam("/geo_localization/frame_id", this->frame_id_);
   this->public_node_handle_.getParam("/geo_localization/url_to_map", this->map_config_.url_to_map);
+  this->public_node_handle_.getParam("/geo_localization/sample_distance", this->map_config_.sample_distance);
   if(!this->private_node_handle_.getParam("rate", this->config_.rate))
   {
     ROS_WARN("GeoLocalizationAlgNode::GeoLocalizationAlgNode: param 'rate' not found");
@@ -23,9 +24,10 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->map_config_.utm2map_tr.y = this->tf_to_utm_.transform.translation.y;
 
   //// Read map from file.
-  static_data_representation::InterfaceAP interface(this->map_config_);
-  interface.readMapFromFile();
-  this->map_ = interface.getMap();
+  this->interface_ = new static_data_representation::InterfaceAP(this->map_config_);
+  this->interface_->readMapFromFile();
+  this->interface_->samplePolylineMap();
+  this->map_ = this->interface_->getMap();
 
   //// Localization init
   this->loc_config_.window_size = 500; // TODO: get from params
@@ -38,10 +40,13 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   // [init publishers]
   this->localization_publisher_ = this->public_node_handle_.advertise<nav_msgs::Odometry>("/localization", 1);
   this->marker_pub_ = this->public_node_handle_.advertise < visualization_msgs::MarkerArray > ("/map", 1);
+  this->landmarks_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/landmarks", 1);
+  this->detection_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/detections", 1);
   
   // [init subscribers]
   this->odom_subscriber_ = this->public_node_handle_.subscribe("/odom", 1, &GeoLocalizationAlgNode::odom_callback, this);
   this->gnss_subscriber_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &GeoLocalizationAlgNode::gnss_callback, this);
+  this->detc_subscriber_ = this->public_node_handle_.subscribe("/ground_lines_pc", 1, &GeoLocalizationAlgNode::detc_callback, this);
   
   // [init services]
   
@@ -79,7 +84,12 @@ void GeoLocalizationAlgNode::mainNodeThread(void)
   //this->tf_to_map_.header.stamp = ros::Time::now();
   //this->broadcaster_.sendTransform(this->tf_to_map_);
 
-  this->marker_pub_.publish(this->marker_array_);
+  //// Publish map only one time.
+  static int count = 0;
+  if (count == 30){
+    this->marker_pub_.publish(this->marker_array_);
+  }
+  count = count + 1;
   
   this->alg_.unlock();
 }
@@ -98,7 +108,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
   if (exec){ // To avoid firs execution.
 
-    //// 1) Propagate state by using odometry differential. 
+    //// 1) ODOM: Propagate state by using odometry differential. 
     Eigen::Matrix<double, 3, 1> p_a(msg_prev.pose.pose.position.x, msg_prev.pose.pose.position.y, 0.0);
     Eigen::Quaternion<double> q_a(msg_prev.pose.pose.orientation.w, 0.0, 0.0, msg_prev.pose.pose.orientation.z);
     Eigen::Matrix<double, 3, 1> p_b(msg->pose.pose.position.x, msg->pose.pose.position.y, 0.0);
@@ -107,7 +117,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     
     this->optimization_->propagateState (p_a, q_a, p_b, q_b, id);
 
-    //// 2) Generate odometry constraint
+    //// 2) ODOM: Generate odometry constraint
     geo_referencing::OdometryConstraint constraint_odom;
     constraint_odom.id_begin = msg_prev.header.seq;
     constraint_odom.id_end = id;
@@ -118,11 +128,44 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     this->optimization_->addOdometryConstraint (constraint_odom);
 
-    //// 3) Compute optimization problem
+    //// 1) DA: Generate Landmarks in interface from map.
+    static_data_representation::Pose2D position;
+    position.x = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.x();
+    position.y = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.y();
+    float radious = 15.0; // TODO: Get from parameter. 
+    this->interface_->createLandmarksFromMap(position, radious*1.2);
+
+    //// 2) DA: Generate detections in interface from msg.
+    static_data_representation::PolylineMap detections;
+    static_data_representation::Polyline positions_way;
+    for (int i = 0; i < this->last_detect_pcl_.points.size(); i++){
+			float point_sf_x = this->last_detect_pcl_.points.at(i).x;
+			float point_sf_y = this->last_detect_pcl_.points.at(i).y;
+			float distance = sqrt(pow(point_sf_x, 2) + pow(point_sf_y, 2));
+			if (distance < radious){
+        static_data_representation::PolylinePoint pt;
+        pt.x = point_sf_x;
+        pt.y = point_sf_y;
+        pt.z = 0.0;
+        positions_way.push_back(pt);
+      }
+    }
+    detections.push_back(positions_way);
+    this->interface_->setDetections(detections);
+
+    //// 3) DA: Compute data association
+
+    //// 4) DA: Generate associations constraint
+
+    //// *) Compute optimization problem
     this->computeOptimizationProblem();
+
+
+
 
     ////////////////////////////////////////////////////////////////////////////////
     //// REPRESENTATION (output)
+    // POSE
     int size = this->optimization_->getTrajectoryEstimated().size();
 
     this->localization_msg_.header.seq = id;
@@ -139,6 +182,25 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->localization_msg_.pose.pose.orientation.w = this->optimization_->getTrajectoryEstimated().at(size-1).q.w();
 
     this->localization_publisher_.publish(this->localization_msg_);
+
+    // LANDMARKS
+    pcl::PointCloud<pcl::PointXYZ> landmarks_pcl;
+    landmarks_pcl.header.frame_id = "map";
+    for (int i = 0; i < this->interface_->getLandmarks().at(0).size(); i++){
+      landmarks_pcl.push_back(pcl::PointXYZ(this->interface_->getLandmarks().at(0).at(i).x,
+                                            this->interface_->getLandmarks().at(0).at(i).y, 0.0));
+    }
+    this->landmarks_publisher_.publish(landmarks_pcl);
+
+    // DETECTIONS
+    pcl::PointCloud<pcl::PointXYZ> detections_pcl;
+    detections_pcl.header.frame_id = "os_sensor";
+    for (int i = 0; i < this->interface_->getDetections().at(0).size(); i++){
+      detections_pcl.push_back(pcl::PointXYZ(this->interface_->getDetections().at(0).at(i).x,
+                                             this->interface_->getDetections().at(0).at(i).y, 0.0));
+    }
+    this->detection_publisher_.publish(detections_pcl);
+
     ////////////////////////////////////////////////////////////////////////////////
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -223,6 +285,21 @@ void GeoLocalizationAlgNode::gnss_callback(const nav_msgs::Odometry::ConstPtr& m
   constraint_prior.information = constraint_prior.covariance.inverse();
 
   this->optimization_->addPriorConstraint (constraint_prior);
+
+  this->alg_.unlock();
+}
+
+void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::ConstPtr &msg)
+{
+  //ROS_INFO("GeoLocalizationAlgNode::detc_callback: New Message Received");
+  this->alg_.lock();
+
+  pcl::PCLPointCloud2 detect_pcl2;
+  //static pcl::PointCloud<pcl::PointXYZ> detect_pcl;
+  this->last_detect_pcl_.clear();
+
+  pcl_conversions::toPCL(*msg, detect_pcl2);
+  pcl::fromPCLPointCloud2(detect_pcl2, this->last_detect_pcl_);
 
   this->alg_.unlock();
 }
@@ -348,14 +425,14 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
         point_line.x = this->map_.at(i).at(j).x;
         point_line.y = this->map_.at(i).at(j).y;
         point_line.z = 0.0;
-        marker_line.points.push_back(point_line);
+        //marker_line.points.push_back(point_line);
         point_line.x = this->map_.at(i).at(j+1).x;
         point_line.y = this->map_.at(i).at(j+1).y;
         point_line.z = 0.0;
-        marker_line.points.push_back(point_line);
+        //marker_line.points.push_back(point_line);
         marker_line.id = id;
         id++;
-        marker_array.markers.push_back(marker_line);
+        //marker_array.markers.push_back(marker_line);
       }
     }
   }
