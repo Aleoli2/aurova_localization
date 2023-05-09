@@ -27,6 +27,7 @@
 
 #include <iri_base_algorithm/iri_base_algorithm.h>
 #include <localization/interface_ap.h>
+#include <localization/association_problem.h>
 #include <localization/optimization_process.h>
 #include <localization/latlong_utm.h>
 #include <visualization_msgs/Marker.h>
@@ -64,6 +65,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     static_data_representation::ConfigParams map_config_;
     static_data_representation::PolylineMap map_;
     static_data_representation::InterfaceAP *interface_;
+    static_data_association::AssociationProblem<3> *associations_;
     geo_referencing::OptimizationProcess *optimization_;
     geo_referencing::ConfigParams loc_config_;
     geometry_msgs::TransformStamped tf_to_utm_;

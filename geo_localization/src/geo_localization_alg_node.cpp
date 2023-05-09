@@ -29,6 +29,9 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->interface_->samplePolylineMap();
   this->map_ = this->interface_->getMap();
 
+  //// Data association init
+  this->associations_ = new static_data_association::AssociationProblem<3>();
+
   //// Localization init
   this->loc_config_.window_size = 500; // TODO: get from params
   this->optimization_ = new geo_referencing::OptimizationProcess(this->loc_config_);
@@ -135,6 +138,23 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     float radious = 15.0; // TODO: Get from parameter. 
     this->interface_->createLandmarksFromMap(position, radious*1.2);
 
+    // Parse interface landmarks to DA and plot it.
+    pcl::PointCloud<pcl::PointXYZ> landmarks_pcl;
+    landmarks_pcl.header.frame_id = "map";
+    this->associations_->clearLandmarks();
+    for (int i = 0; i < this->interface_->getLandmarks().at(0).size(); i++){
+      landmarks_pcl.push_back(pcl::PointXYZ(this->interface_->getLandmarks().at(0).at(i).x,
+                                            this->interface_->getLandmarks().at(0).at(i).y, 0.0));
+      static_data_association::DalmrPolyDetection landmark(Eigen::Vector3d(this->interface_->getLandmarks().at(0).at(i).x, 
+                                                                           this->interface_->getLandmarks().at(0).at(i).y, 
+                                                                           this->interface_->getLandmarks().at(0).at(i).z),
+					                                                                 this->interface_->getLandmarks().at(0).at(i).id);
+      this->associations_->addLandmark(std::make_unique<static_data_association::DalmrPolyDetection>(landmark));
+    }
+    this->landmarks_publisher_.publish(landmarks_pcl);
+    // DEBUG
+    //std::cout << "LANDMARKS N: " << this->associations_->getLandmarks().size() << std::endl;
+
     //// 2) DA: Generate detections in interface from msg.
     static_data_representation::PolylineMap detections;
     static_data_representation::Polyline positions_way;
@@ -147,13 +167,40 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
         pt.x = point_sf_x;
         pt.y = point_sf_y;
         pt.z = 0.0;
+        pt.id = i;
         positions_way.push_back(pt);
       }
     }
     detections.push_back(positions_way);
     this->interface_->setDetections(detections);
 
+    static_data_representation::Tf tf_lidar2map;
+    Eigen::Matrix<double, 3, 3> r = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q.toRotationMatrix();
+    Eigen::Matrix<double, 3, 1> t = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
+    tf_lidar2map.linear() = r;
+    tf_lidar2map.translation() = t;
+    this->interface_->applyTfToDetections(tf_lidar2map);
+
+    // Parse interface detections to DA and plot it.
+    pcl::PointCloud<pcl::PointXYZ> detections_pcl;
+    detections_pcl.header.frame_id = "map";
+    this->associations_->clearDetections();
+    for (int i = 0; i < this->interface_->getDetections().at(0).size(); i++){
+      detections_pcl.push_back(pcl::PointXYZ(this->interface_->getDetections().at(0).at(i).x,
+                                             this->interface_->getDetections().at(0).at(i).y, 0.0));
+      static_data_association::DalmrPolyDetection detection(Eigen::Vector3d(this->interface_->getDetections().at(0).at(i).x, 
+                                                                            this->interface_->getDetections().at(0).at(i).y, 
+                                                                            this->interface_->getDetections().at(0).at(i).z),
+					                                                                  this->interface_->getDetections().at(0).at(i).id);
+      this->associations_->addDetection(std::make_unique<static_data_association::DalmrPolyDetection>(detection));
+    }
+    this->detection_publisher_.publish(detections_pcl);
+    // DEBUG
+    //std::cout << "DETECTIONS M: " << this->associations_->getDetections().size() << std::endl;
+
     //// 3) DA: Compute data association
+    static_data_association::SacBasedCfg dcsac_cfg;
+	  Eigen::Isometry3d tf;
 
     //// 4) DA: Generate associations constraint
 
@@ -182,25 +229,6 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->localization_msg_.pose.pose.orientation.w = this->optimization_->getTrajectoryEstimated().at(size-1).q.w();
 
     this->localization_publisher_.publish(this->localization_msg_);
-
-    // LANDMARKS
-    pcl::PointCloud<pcl::PointXYZ> landmarks_pcl;
-    landmarks_pcl.header.frame_id = "map";
-    for (int i = 0; i < this->interface_->getLandmarks().at(0).size(); i++){
-      landmarks_pcl.push_back(pcl::PointXYZ(this->interface_->getLandmarks().at(0).at(i).x,
-                                            this->interface_->getLandmarks().at(0).at(i).y, 0.0));
-    }
-    this->landmarks_publisher_.publish(landmarks_pcl);
-
-    // DETECTIONS
-    pcl::PointCloud<pcl::PointXYZ> detections_pcl;
-    detections_pcl.header.frame_id = "os_sensor";
-    for (int i = 0; i < this->interface_->getDetections().at(0).size(); i++){
-      detections_pcl.push_back(pcl::PointXYZ(this->interface_->getDetections().at(0).at(i).x,
-                                             this->interface_->getDetections().at(0).at(i).y, 0.0));
-    }
-    this->detection_publisher_.publish(detections_pcl);
-
     ////////////////////////////////////////////////////////////////////////////////
 
     ////////////////////////////////////////////////////////////////////////////////
