@@ -24,6 +24,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->map_config_.utm2map_tr.y = this->tf_to_utm_.transform.translation.y;
 
   //// Read map from file.
+  // Sample distance // TODO: get from params
   this->interface_ = new static_data_representation::InterfaceAP(this->map_config_);
   this->interface_->readMapFromFile();
   this->interface_->samplePolylineMap();
@@ -37,7 +38,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->optimization_ = new geo_referencing::OptimizationProcess(this->loc_config_);
   this->optimization_->initializeState();
 
-  //// Plot map in Rviz (TODO: put it on function).
+  //// Plot map in Rviz.
   this->parseMapToRosMarker(this->marker_array_);
 
   // [init publishers]
@@ -138,9 +139,17 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     float radious = 15.0; // TODO: Get from parameter. 
     this->interface_->createLandmarksFromMap(position, radious*1.2);
 
+    // Transform landmarks to base(lidar) frame.
+    static_data_representation::Tf tf_lidar2map;
+    Eigen::Matrix<double, 3, 3> r = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q.toRotationMatrix();
+    Eigen::Matrix<double, 3, 1> t = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
+    tf_lidar2map.linear() = r;
+    tf_lidar2map.translation() = t;
+    this->interface_->applyTfFromLandmarksToBaseFrame(tf_lidar2map);
+
     // Parse interface landmarks to DA and plot it.
     pcl::PointCloud<pcl::PointXYZ> landmarks_pcl;
-    landmarks_pcl.header.frame_id = "map";
+    landmarks_pcl.header.frame_id = "os_sensor";
     this->associations_->clearLandmarks();
     for (int i = 0; i < this->interface_->getLandmarks().at(0).size(); i++){
       landmarks_pcl.push_back(pcl::PointXYZ(this->interface_->getLandmarks().at(0).at(i).x,
@@ -174,16 +183,9 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     detections.push_back(positions_way);
     this->interface_->setDetections(detections);
 
-    static_data_representation::Tf tf_lidar2map;
-    Eigen::Matrix<double, 3, 3> r = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q.toRotationMatrix();
-    Eigen::Matrix<double, 3, 1> t = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
-    tf_lidar2map.linear() = r;
-    tf_lidar2map.translation() = t;
-    this->interface_->applyTfToDetections(tf_lidar2map);
-
     // Parse interface detections to DA and plot it.
     pcl::PointCloud<pcl::PointXYZ> detections_pcl;
-    detections_pcl.header.frame_id = "map";
+    detections_pcl.header.frame_id = "os_sensor";
     this->associations_->clearDetections();
     for (int i = 0; i < this->interface_->getDetections().at(0).size(); i++){
       detections_pcl.push_back(pcl::PointXYZ(this->interface_->getDetections().at(0).at(i).x,
@@ -200,7 +202,26 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     //// 3) DA: Compute data association
     static_data_association::SacBasedCfg dcsac_cfg;
-	  Eigen::Isometry3d tf;
+    static_data_association::Hypothesis<3> best(*associations_);
+    Eigen::Isometry3d tf;
+
+    dcsac_cfg.x_var = 4.0; //// TODO: Get from param.
+	  dcsac_cfg.y_var = 4.0;
+	  dcsac_cfg.w_var = 0.1;
+	  dcsac_cfg.error_threshold = 0.55;
+	  dcsac_cfg.compatibility_distance = 1.5;
+	  dcsac_cfg.threshold_asso = 3.0;
+    //this->associations_->dcsac(dcsac_cfg, tf);
+    //best.numValidAssociations();
+    /*static_data_association::SacBasedAssociation<3> sac_asso(dcsac_cfg, *associations_);
+    sac_asso.nnImplementation();
+    for (size_t i = 0; i < sac_asso.getAssociations().size(); i++)
+    {
+      size_t d_id = sac_asso.getAssociations()[i].first;
+      size_t l_id = sac_asso.getAssociations()[i].second;
+      best = static_data_association::Hypothesis<3>(best, d_id, l_id);
+    }
+    std::cout << "ASSOCIATIONS N: " << best.numValidAssociations() << std::endl;*/
 
     //// 4) DA: Generate associations constraint
 
