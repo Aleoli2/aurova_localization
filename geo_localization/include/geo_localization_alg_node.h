@@ -27,8 +27,8 @@
 
 #include <iri_base_algorithm/iri_base_algorithm.h>
 #include <localization/interface_ap.h>
-#include <localization/association_problem.h>
 #include <localization/optimization_process.h>
+#include <localization/association_problem.h>
 #include <localization/latlong_utm.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -42,6 +42,7 @@
 #include <tf/tf.h>
 #include <iostream>
 #include <fstream>
+#include <pcl/registration/icp.h>
 #include "geo_localization_alg.h"
 
 // [publisher subscriber headers]
@@ -65,7 +66,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     static_data_representation::ConfigParams map_config_;
     static_data_representation::PolylineMap map_;
     static_data_representation::InterfaceAP *interface_;
-    static_data_association::AssociationProblem<3> *associations_;
+    static_data_association::AssociationProblem *associations_;
     geo_referencing::OptimizationProcess *optimization_;
     geo_referencing::ConfigParams loc_config_;
     geometry_msgs::TransformStamped tf_to_utm_;
@@ -79,6 +80,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     ros::Publisher localization_publisher_;
     ros::Publisher landmarks_publisher_;
     ros::Publisher detection_publisher_;
+    ros::Publisher corregist_publisher_;
     nav_msgs::Odometry localization_msg_;
 
     // [subscriber attributes]
