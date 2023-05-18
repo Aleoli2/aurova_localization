@@ -110,9 +110,11 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
   static bool exec = false;
   static nav_msgs::Odometry msg_prev;
+  static int count = 0;
 
   if (exec){ // To avoid firs execution.
 
+    //////////////////////////////////////////////////////////////////////////////////////////////
     //// 1) ODOM: Propagate state by using odometry differential. 
     Eigen::Matrix<double, 3, 1> p_a(msg_prev.pose.pose.position.x, msg_prev.pose.pose.position.y, 0.0);
     Eigen::Quaternion<double> q_a(msg_prev.pose.pose.orientation.w, 0.0, 0.0, msg_prev.pose.pose.orientation.z);
@@ -133,6 +135,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     this->optimization_->addOdometryConstraint (constraint_odom);
 
+    //////////////////////////////////////////////////////////////////////////////////////////////
     //// 1) DA: Generate Landmarks in interface from map.
     static_data_representation::Pose2D position;
     position.x = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.x();
@@ -210,7 +213,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     pcl::PointCloud<pcl::PointXYZ> coregistered_pcl;
     icp.align(coregistered_pcl);
 
-    Eigen::Matrix4f tf = icp.getFinalTransformation();
+    Eigen::Matrix4d tf = icp.getFinalTransformation().cast<double>();
 
     std::cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << std::endl;
     std::cout << tf << std::endl;
@@ -218,11 +221,22 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     coregistered_pcl.header.frame_id = "os_sensor";
     this->corregist_publisher_.publish(coregistered_pcl);
 
-
-
-
     //// 4) DA: Generate associations constraint
+    if (count > 20 && this->associations_->getLandmarks().size() > 50){ // TODO: Get from param
+      Eigen::Quaterniond tf_q(tf.block<3, 3>(0, 0));
+      Eigen::Vector3d tf_p = tf.block<3, 1>(0, 3);
+      geo_referencing::AssoConstraint constraints_asso;
+      constraints_asso.id = id;
+      constraints_asso.p = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p + 
+                           this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q * tf_p;
+      constraints_asso.q = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q * tf_q;
+      constraints_asso.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
+      constraints_asso.information = constraints_asso.covariance.inverse();
+      this->optimization_->addAssoConstraint (constraints_asso);
+      count = 21;
+    }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////
     //// *) Compute optimization problem
     if (this->optimization_->getPriorConstraints().size() > 4){
       float x_min = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - 5).p.x();
@@ -231,7 +245,10 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
       float y_max = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - 1).p.y();
       
       //std::cout << "DISTANCE PRIOR: " << sqrt(pow(x_max-x_min,2) + pow(y_max-y_min,2)) << std::endl;
-      if (sqrt(pow(x_max-x_min,2) + pow(y_max-y_min,2)) > 5.0) this->computeOptimizationProblem();
+      if (sqrt(pow(x_max-x_min,2) + pow(y_max-y_min,2)) > 5.0){
+        this->computeOptimizationProblem();
+        count++;
+      } 
     }
     
 
@@ -506,6 +523,7 @@ void GeoLocalizationAlgNode::computeOptimizationProblem (void)
 	ceres::LossFunction* loss_function = new ceres::HuberLoss(0.01); //nullptr;//new ceres::HuberLoss(0.01);
 	if (index > 0) this->optimization_->generateOdomResiduals(loss_function, quaternion_local_parameterization, &problem);
   if (index > 0) this->optimization_->generatePriorResiduals(loss_function, quaternion_local_parameterization, &problem);
+  if (index > 0) this->optimization_->generateAssoResiduals(loss_function, quaternion_local_parameterization, &problem);
 
 	//////////////////////////////////////////////////////////////////////
 	//// SOLVE OPTIMIZATION PROBLEM
