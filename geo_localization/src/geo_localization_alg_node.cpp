@@ -112,6 +112,9 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
   static nav_msgs::Odometry msg_prev;
   static int count = 0;
 
+  double tf_yaw;
+  double tf_dist;
+
   if (exec){ // To avoid firs execution.
 
     //////////////////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +144,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     position.x = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.x();
     position.y = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.y();
     float radious = 15.0; // TODO: Get from parameter. 
-    this->interface_->createLandmarksFromMap(position, radious*1.2);
+    this->interface_->createLandmarksFromMap(position, radious*2.0);
 
     // Transform landmarks to base(lidar) frame.
     static_data_representation::Tf tf_lidar2map;
@@ -193,7 +196,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->associations_->clearDetections();
     for (int i = 0; i < this->interface_->getDetections().at(0).size(); i++){
       detections_pcl->push_back(pcl::PointXYZ(this->interface_->getDetections().at(0).at(i).x,
-                                             this->interface_->getDetections().at(0).at(i).y, 0.0));
+                                              this->interface_->getDetections().at(0).at(i).y, 0.0));
       static_data_association::DalmrPolyDetection detection(Eigen::Vector3d(this->interface_->getDetections().at(0).at(i).x, 
                                                                             this->interface_->getDetections().at(0).at(i).y, 
                                                                             this->interface_->getDetections().at(0).at(i).z),
@@ -215,16 +218,22 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     Eigen::Matrix4d tf = icp.getFinalTransformation().cast<double>();
 
-    std::cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << std::endl;
-    std::cout << tf << std::endl;
+    //std::cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << std::endl;
+    //std::cout << tf << std::endl;
 
     coregistered_pcl.header.frame_id = "os_sensor";
     this->corregist_publisher_.publish(coregistered_pcl);
 
-    //// 4) DA: Generate associations constraint
+    Eigen::Quaterniond tf_q(tf.block<3, 3>(0, 0));
+    Eigen::Vector3d tf_p = tf.block<3, 1>(0, 3);
+    Eigen::Vector3d tf_a = tf_q.toRotationMatrix().eulerAngles(0, 1, 2);
+    tf_yaw = tf_a.z();
+    tf_dist = sqrt(pow(tf_p(0), 2) + pow(tf_p(1), 2));
+    std::cout << "YAW: " << tf_yaw << std::endl;
+    std::cout << "DISTANCE: " << tf_dist << std::endl;
+
+    //// 4) DA: Generate associations TF constraint
     if (count > 20 && this->associations_->getLandmarks().size() > 50){ // TODO: Get from param
-      Eigen::Quaterniond tf_q(tf.block<3, 3>(0, 0));
-      Eigen::Vector3d tf_p = tf.block<3, 1>(0, 3);
       geo_referencing::AssoConstraint constraints_asso;
       constraints_asso.id = id;
       constraints_asso.p = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p + 
@@ -272,6 +281,11 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->localization_msg_.pose.pose.orientation.y = this->optimization_->getTrajectoryEstimated().at(size-1).q.y();
     this->localization_msg_.pose.pose.orientation.z = this->optimization_->getTrajectoryEstimated().at(size-1).q.z();
     this->localization_msg_.pose.pose.orientation.w = this->optimization_->getTrajectoryEstimated().at(size-1).q.w();
+
+    this->localization_msg_.pose.covariance[0] = (float)tf_dist;
+    this->localization_msg_.pose.covariance[7] = (float)tf_dist;
+    this->localization_msg_.pose.covariance[14] = 0.1;
+    this->localization_msg_.pose.covariance[35] = (float)tf_yaw;
 
     this->localization_publisher_.publish(this->localization_msg_);
     ////////////////////////////////////////////////////////////////////////////////
