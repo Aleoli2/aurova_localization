@@ -43,6 +43,9 @@
 #include <iostream>
 #include <fstream>
 #include <pcl/registration/icp.h>
+#include <pcl/filters/filter.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/kdtree/kdtree_flann.h>
 #include "geo_localization_alg.h"
 
 // [publisher subscriber headers]

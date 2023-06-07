@@ -34,9 +34,11 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->associations_ = new static_data_association::AssociationProblem();
 
   //// Localization init
-  this->loc_config_.window_size = 500; // TODO: get from params
+  this->loc_config_.window_size = 100; // TODO: get from params
   this->optimization_ = new geo_referencing::OptimizationProcess(this->loc_config_);
   this->optimization_->initializeState();
+  this->optimization_->addRotationTransform(1.57);
+  this->optimization_->addTranslationTransform(10.0);
 
   //// Plot map in Rviz.
   this->parseMapToRosMarker(this->marker_array_);
@@ -153,20 +155,24 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     // Parse interface landmarks to DA and plot it.
     pcl::PointCloud<pcl::PointXYZ>::Ptr landmarks_pcl(new pcl::PointCloud<pcl::PointXYZ>);
+    std::vector<int> landmarks_i;
+    std::vector<int> landmarks_j;
     landmarks_pcl->header.frame_id = "os_sensor";
     this->associations_->clearLandmarks();
     for (int i = 0; i < this->interface_->getLandmarks().at(0).size(); i++){
       landmarks_pcl->push_back(pcl::PointXYZ(this->interface_->getLandmarks().at(0).at(i).x,
-                                            this->interface_->getLandmarks().at(0).at(i).y, 0.0));
+                                             this->interface_->getLandmarks().at(0).at(i).y, 0.0));
+      landmarks_i.push_back(this->interface_->getLandmarks().at(0).at(i).id);
+      landmarks_j.push_back(this->interface_->getLandmarks().at(0).at(i).id_aux);
       static_data_association::DalmrPolyDetection landmark(Eigen::Vector3d(this->interface_->getLandmarks().at(0).at(i).x, 
                                                                            this->interface_->getLandmarks().at(0).at(i).y, 
                                                                            this->interface_->getLandmarks().at(0).at(i).z),
 					                                                                 this->interface_->getLandmarks().at(0).at(i).id);
       this->associations_->addLandmark(std::make_unique<static_data_association::DalmrPolyDetection>(landmark));
     }
-    this->landmarks_publisher_.publish(*landmarks_pcl);
+    //this->landmarks_publisher_.publish(*landmarks_pcl);
     // DEBUG
-    std::cout << "LANDMARKS N: " << this->associations_->getLandmarks().size() << std::endl;
+    //std::cout << "LANDMARKS N: " << this->associations_->getLandmarks().size() << std::endl;
 
     //// 2) DA: Generate detections in interface from msg.
     static_data_representation::PolylineMap detections;
@@ -202,7 +208,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     }
     this->detection_publisher_.publish(*detections_pcl);
     // DEBUG
-    std::cout << "DETECTIONS M: " << this->associations_->getDetections().size() << std::endl;
+    //std::cout << "DETECTIONS M: " << this->associations_->getDetections().size() << std::endl;
 
     //// 3) DA: Compute data association
     //// ICP
@@ -210,16 +216,20 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     icp.setInputSource(detections_pcl);
     icp.setInputTarget(landmarks_pcl);
   
-    pcl::PointCloud<pcl::PointXYZ> coregistered_pcl;
-    icp.align(coregistered_pcl);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr coregistered_pcl(new pcl::PointCloud<pcl::PointXYZ>);
+    icp.align(*coregistered_pcl);
 
     Eigen::Matrix4d tf = icp.getFinalTransformation().cast<double>();
 
     //std::cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << std::endl;
     //std::cout << tf << std::endl;
 
-    coregistered_pcl.header.frame_id = "os_sensor";
-    this->corregist_publisher_.publish(coregistered_pcl);
+    pcl::VoxelGrid<pcl::PointXYZ> vg;
+    vg.setInputCloud(coregistered_pcl);
+    vg.setLeafSize(1.5f, 1.5f, 100.0f);
+    vg.filter(*coregistered_pcl);
+    coregistered_pcl->header.frame_id = "os_sensor";
+    this->corregist_publisher_.publish(*coregistered_pcl);
 
     Eigen::Quaterniond tf_q(tf.block<3, 3>(0, 0));
     Eigen::Vector3d tf_p = tf.block<3, 1>(0, 3);
@@ -228,13 +238,19 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     double tf_dist = sqrt(pow(tf_p(0), 2) + pow(tf_p(1), 2));
     this->optimization_->addRotationTransform(tf_yaw);
     this->optimization_->addTranslationTransform(tf_dist);
-    std::cout << "YAW: " << tf_yaw << std::endl;
-    std::cout << "DISTANCE: " << tf_dist << std::endl;
+
+    Eigen::Affine3d tf_aff(Eigen::Affine3f::Identity());
+    tf_aff.matrix() = tf;
+
+    //std::cout << "YAW: " << tf_yaw << std::endl;
+    //std::cout << "DISTANCE: " << tf_dist << std::endl;
 
     //// 4) DA: Generate associations TF constraint
-    bool key_frame = count > 20 && this->associations_->getLandmarks().size() > 50 /*&& 
-                     tf_dist < this->optimization_->getTranslationVariance() * 2 &&
-                     tf_yaw  < this->optimization_->getRotationVariance() * 2*/; // TODO: Get from param
+    bool key_frame = count > 20 && this->associations_->getLandmarks().size() > 50 && (id%2 == 0); // TODO: Get from param
+    bool option_da =  tf_dist < this->optimization_->getTranslationVariance() * 2 &&
+                      tf_yaw  < this->optimization_->getRotationVariance() * 2;
+    /*
+    //// ASSOCIATION CONSTRAINT USING TF
     if (key_frame){ 
       geo_referencing::AssoConstraint constraints_asso;
       constraints_asso.id = id;
@@ -245,6 +261,83 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
       constraints_asso.information = constraints_asso.covariance.inverse();
       this->optimization_->addAssoConstraint (constraints_asso);
       count = 21;
+    }
+    */
+    //// ASSOCIATION CONSTRAINT USING POINTS
+    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+    kdtree.setInputCloud(landmarks_pcl);
+    int K = 10;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr landmarks_debug(new pcl::PointCloud<pcl::PointXYZ>);
+    landmarks_debug->header.frame_id = "map";
+    if (key_frame){ 
+      std::cout << "Data Association: ICP" << std::endl;
+      geo_referencing::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
+      for (int i = 0; i < coregistered_pcl->points.size(); i++){
+        // Nearest point "landmarks_pcl"
+        std::vector<int> pointIdxKNNSearch(K);
+        std::vector<float> pointKNNSquaredDistance(K);
+        pcl::PointXYZ search_point = coregistered_pcl->points.at(i);
+        if (kdtree.nearestKSearch (search_point, K, pointIdxKNNSearch, pointKNNSquaredDistance) > 0){
+          if (sqrt(pointKNNSquaredDistance[0]) < 1.0){ // TODO: Get from param
+            geo_referencing::AssoPointsConstraint constraints_asso_pt;
+            
+            constraints_asso_pt.id = id;
+            constraints_asso_pt.landmark = Eigen::Vector3d(this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).x,
+                                                           this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).y,
+                                                           0.0);
+            constraints_asso_pt.detection = tf_aff.inverse() * Eigen::Vector3d(coregistered_pcl->points.at(i).x,
+                                                                               coregistered_pcl->points.at(i).y,
+                                                                               0.0);
+            
+            constraints_asso_pt.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
+            constraints_asso_pt.information = constraints_asso_pt.covariance.inverse();
+
+            constraints_asso_pt_ss.push_back(constraints_asso_pt);
+
+            landmarks_debug->push_back(pcl::PointXYZ(this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).x,
+                                                     this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).y,
+                                                     0.0));
+          }
+        }
+      }
+      count = 21;
+      this->optimization_->addAssoPointConstraintsSingleShot (constraints_asso_pt_ss);
+      this->landmarks_publisher_.publish(*landmarks_debug);
+    }else{
+      /*
+      if (!option_da){
+        std::cout << "Data Association: NN" << std::endl;
+        vg.setInputCloud(detections_pcl);
+        vg.setLeafSize(1.5f, 1.5f, 100.0f);
+        vg.filter(*detections_pcl);
+        geo_referencing::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
+        for (int i = 0; i < detections_pcl->points.size(); i++){
+          // Nearest point "landmarks_pcl"
+          std::vector<int> pointIdxKNNSearch(K);
+          std::vector<float> pointKNNSquaredDistance(K);
+          pcl::PointXYZ search_point = detections_pcl->points.at(i);
+          if (kdtree.nearestKSearch (search_point, K, pointIdxKNNSearch, pointKNNSquaredDistance) > 0){
+            if (sqrt(pointKNNSquaredDistance[0]) < 1.0){ // TODO: Get from param
+              geo_referencing::AssoPointsConstraint constraints_asso_pt;
+              
+              constraints_asso_pt.id = id;
+              constraints_asso_pt.landmark = Eigen::Vector3d(this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).x,
+                                                             this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).y,
+                                                             0.0);
+              constraints_asso_pt.detection = Eigen::Vector3d(detections_pcl->points.at(i).x,
+                                                              detections_pcl->points.at(i).y,
+                                                              0.0);
+              
+              constraints_asso_pt.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
+              constraints_asso_pt.information = constraints_asso_pt.covariance.inverse();
+
+              constraints_asso_pt_ss.push_back(constraints_asso_pt);
+            }
+          }
+        }
+        this->optimization_->addAssoPointConstraintsSingleShot (constraints_asso_pt_ss);
+      }
+      */
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////
@@ -539,7 +632,7 @@ void GeoLocalizationAlgNode::computeOptimizationProblem (void)
 	ceres::LossFunction* loss_function = new ceres::HuberLoss(0.01); //nullptr;//new ceres::HuberLoss(0.01);
 	if (index > 0) this->optimization_->generateOdomResiduals(loss_function, quaternion_local_parameterization, &problem);
   if (index > 0) this->optimization_->generatePriorResiduals(loss_function, quaternion_local_parameterization, &problem);
-  if (index > 0) this->optimization_->generateAssoResiduals(loss_function, quaternion_local_parameterization, &problem);
+  if (index > 0) this->optimization_->generateAssoPointResiduals(loss_function, quaternion_local_parameterization, &problem);
 
 	//////////////////////////////////////////////////////////////////////
 	//// SOLVE OPTIMIZATION PROBLEM
