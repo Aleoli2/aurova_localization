@@ -112,9 +112,6 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
   static nav_msgs::Odometry msg_prev;
   static int count = 0;
 
-  double tf_yaw;
-  double tf_dist;
-
   if (exec){ // To avoid firs execution.
 
     //////////////////////////////////////////////////////////////////////////////////////////////
@@ -227,13 +224,18 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     Eigen::Quaterniond tf_q(tf.block<3, 3>(0, 0));
     Eigen::Vector3d tf_p = tf.block<3, 1>(0, 3);
     Eigen::Vector3d tf_a = tf_q.toRotationMatrix().eulerAngles(0, 1, 2);
-    tf_yaw = tf_a.z();
-    tf_dist = sqrt(pow(tf_p(0), 2) + pow(tf_p(1), 2));
+    double tf_yaw = abs(tf_a.z());
+    double tf_dist = sqrt(pow(tf_p(0), 2) + pow(tf_p(1), 2));
+    this->optimization_->addRotationTransform(tf_yaw);
+    this->optimization_->addTranslationTransform(tf_dist);
     std::cout << "YAW: " << tf_yaw << std::endl;
     std::cout << "DISTANCE: " << tf_dist << std::endl;
 
     //// 4) DA: Generate associations TF constraint
-    if (count > 20 && this->associations_->getLandmarks().size() > 50){ // TODO: Get from param
+    bool key_frame = count > 20 && this->associations_->getLandmarks().size() > 50 /*&& 
+                     tf_dist < this->optimization_->getTranslationVariance() * 2 &&
+                     tf_yaw  < this->optimization_->getRotationVariance() * 2*/; // TODO: Get from param
+    if (key_frame){ 
       geo_referencing::AssoConstraint constraints_asso;
       constraints_asso.id = id;
       constraints_asso.p = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p + 
@@ -282,10 +284,10 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->localization_msg_.pose.pose.orientation.z = this->optimization_->getTrajectoryEstimated().at(size-1).q.z();
     this->localization_msg_.pose.pose.orientation.w = this->optimization_->getTrajectoryEstimated().at(size-1).q.w();
 
-    this->localization_msg_.pose.covariance[0] = (float)tf_dist;
-    this->localization_msg_.pose.covariance[7] = (float)tf_dist;
+    this->localization_msg_.pose.covariance[0] = this->optimization_->getTranslationVariance() * 2;
+    this->localization_msg_.pose.covariance[7] = this->optimization_->getTranslationVariance() * 2;
     this->localization_msg_.pose.covariance[14] = 0.1;
-    this->localization_msg_.pose.covariance[35] = (float)tf_yaw;
+    this->localization_msg_.pose.covariance[35] = this->optimization_->getRotationVariance() * 2;
 
     this->localization_publisher_.publish(this->localization_msg_);
     ////////////////////////////////////////////////////////////////////////////////
