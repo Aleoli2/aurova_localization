@@ -34,7 +34,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->associations_ = new static_data_association::AssociationProblem();
 
   //// Localization init
-  this->loc_config_.window_size = 100; // TODO: get from params
+  this->loc_config_.window_size = 30; // TODO: get from params
   this->optimization_ = new geo_referencing::OptimizationProcess(this->loc_config_);
   this->optimization_->initializeState();
   this->optimization_->addRotationTransform(1.57);
@@ -143,7 +143,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     position.x = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.x();
     position.y = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.y();
     float radious = 15.0; // TODO: Get from parameter. 
-    this->interface_->createLandmarksFromMap(position, radious*2.0);
+    this->interface_->createLandmarksFromMap(position, radious*1.5);
 
     // Transform landmarks to base(lidar) frame.
     static_data_representation::Tf tf_lidar2map;
@@ -246,7 +246,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     //std::cout << "DISTANCE: " << tf_dist << std::endl;
 
     //// 4) DA: Generate associations TF constraint
-    bool key_frame = count > 20 && this->associations_->getLandmarks().size() > 50 && (id%2 == 0); // TODO: Get from param
+    bool key_frame = count > 20 && this->associations_->getLandmarks().size() > 50 /*&& (id%2 == 0)*/; // TODO: Get from param
     bool option_da =  tf_dist < this->optimization_->getTranslationVariance() * 2 &&
                       tf_yaw  < this->optimization_->getRotationVariance() * 2;
     /*
@@ -594,7 +594,7 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
     for (int j = 0; j < this->map_.at(i).size(); j++){
       marker.pose.position.x = this->map_.at(i).at(j).x;
       marker.pose.position.y = this->map_.at(i).at(j).y;
-      marker.pose.position.z = 0.0;
+      marker.pose.position.z = this->map_.at(i).at(j).z;
       marker.pose.orientation.x = 0.0;
       marker.pose.orientation.y = 0.0;
       marker.pose.orientation.z = 0.0;
