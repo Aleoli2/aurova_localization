@@ -5,19 +5,26 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
 {
 
   //// Init class attributes if necessary
+  this->public_node_handle_.getParam("/geo_localization/url_to_map", this->map_config_.url_to_map);
+  this->public_node_handle_.getParam("/geo_localization/sample_distance", this->map_config_.sample_distance);
+  this->public_node_handle_.getParam("/geo_localization/radious_dt", this->map_config_.radious_dt);
+  this->public_node_handle_.getParam("/geo_localization/radious_lm", this->map_config_.radious_lm);
+
+  this->public_node_handle_.getParam("/geo_localization/window_size", this->loc_config_.window_size);
+
   this->public_node_handle_.getParam("/geo_localization/lat_zero", this->lat_zero_);
   this->public_node_handle_.getParam("/geo_localization/lon_zero", this->lon_zero_);
   this->public_node_handle_.getParam("/geo_localization/frame_id", this->frame_id_);
-  this->public_node_handle_.getParam("/geo_localization/url_to_map", this->map_config_.url_to_map);
-  this->public_node_handle_.getParam("/geo_localization/sample_distance", this->map_config_.sample_distance);
   if(!this->private_node_handle_.getParam("rate", this->config_.rate))
   {
     ROS_WARN("GeoLocalizationAlgNode::GeoLocalizationAlgNode: param 'rate' not found");
   }
   else
     this->setRate(this->config_.rate);
+  
+  this->count_ = 0;
 
-  //// Generate transform between frame_id and utm (lat/long zero requiered).
+  //// Generate transform between map and utm (lat/long zero requiered).
   this->fromUtmTransform();
   this->mapToOdomInit();
   this->map_config_.utm2map_tr.x = this->tf_to_utm_.transform.translation.x;
@@ -30,11 +37,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->interface_->samplePolylineMap();
   this->map_ = this->interface_->getMap();
 
-  //// Data association init
-  this->associations_ = new static_data_association::AssociationProblem();
-
   //// Localization init
-  this->loc_config_.window_size = 30; // TODO: get from params
   this->optimization_ = new geo_referencing::OptimizationProcess(this->loc_config_);
   this->optimization_->initializeState();
   this->optimization_->addRotationTransform(1.57);
@@ -73,8 +76,6 @@ void GeoLocalizationAlgNode::mainNodeThread(void)
 {
   //lock access to algorithm if necessary
   this->alg_.lock();
-  //ROS_DEBUG("GeoLocalizationAlgNode::mainNodeThread");
-  //std::cout << "x: " << this->map_.at(0).at(0).x << ", y: " << this->map_.at(0).at(0).y << std::endl;
 
   // [fill msg structures]
   
@@ -112,7 +113,6 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
   static bool exec = false;
   static nav_msgs::Odometry msg_prev;
-  static int count = 0;
 
   if (exec){ // To avoid firs execution.
 
@@ -138,225 +138,20 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->optimization_->addOdometryConstraint (constraint_odom);
 
     //////////////////////////////////////////////////////////////////////////////////////////////
-    //// 1) DA: Generate Landmarks in interface from map.
-    static_data_representation::Pose2D position;
-    position.x = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.x();
-    position.y = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.y();
-    float radious = 15.0; // TODO: Get from parameter. 
-    this->interface_->createLandmarksFromMap(position, radious*1.5);
-
-    // Transform landmarks to base(lidar) frame.
-    static_data_representation::Tf tf_lidar2map;
-    Eigen::Matrix<double, 3, 3> r = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q.toRotationMatrix();
-    Eigen::Matrix<double, 3, 1> t = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
-    tf_lidar2map.linear() = r;
-    tf_lidar2map.translation() = t;
-    this->interface_->applyTfFromLandmarksToBaseFrame(tf_lidar2map);
-
-    // Parse interface landmarks to DA and plot it.
-    pcl::PointCloud<pcl::PointXYZ>::Ptr landmarks_pcl(new pcl::PointCloud<pcl::PointXYZ>);
-    std::vector<int> landmarks_i;
-    std::vector<int> landmarks_j;
-    landmarks_pcl->header.frame_id = "os_sensor";
-    this->associations_->clearLandmarks();
-    for (int i = 0; i < this->interface_->getLandmarks().at(0).size(); i++){
-      landmarks_pcl->push_back(pcl::PointXYZ(this->interface_->getLandmarks().at(0).at(i).x,
-                                             this->interface_->getLandmarks().at(0).at(i).y, 0.0));
-      landmarks_i.push_back(this->interface_->getLandmarks().at(0).at(i).id);
-      landmarks_j.push_back(this->interface_->getLandmarks().at(0).at(i).id_aux);
-      static_data_association::DalmrPolyDetection landmark(Eigen::Vector3d(this->interface_->getLandmarks().at(0).at(i).x, 
-                                                                           this->interface_->getLandmarks().at(0).at(i).y, 
-                                                                           this->interface_->getLandmarks().at(0).at(i).z),
-					                                                                 this->interface_->getLandmarks().at(0).at(i).id);
-      this->associations_->addLandmark(std::make_unique<static_data_association::DalmrPolyDetection>(landmark));
-    }
-    //this->landmarks_publisher_.publish(*landmarks_pcl);
-    // DEBUG
-    //std::cout << "LANDMARKS N: " << this->associations_->getLandmarks().size() << std::endl;
-
-    //// 2) DA: Generate detections in interface from msg.
-    static_data_representation::PolylineMap detections;
-    static_data_representation::Polyline positions_way;
-    for (int i = 0; i < this->last_detect_pcl_.points.size(); i++){
-			float point_sf_x = this->last_detect_pcl_.points.at(i).x;
-			float point_sf_y = this->last_detect_pcl_.points.at(i).y;
-			float distance = sqrt(pow(point_sf_x, 2) + pow(point_sf_y, 2));
-			if (distance < radious){
-        static_data_representation::PolylinePoint pt;
-        pt.x = point_sf_x;
-        pt.y = point_sf_y;
-        pt.z = 0.0;
-        pt.id = i;
-        positions_way.push_back(pt);
-      }
-    }
-    detections.push_back(positions_way);
-    this->interface_->setDetections(detections);
-
-    // Parse interface detections to DA and plot it.
-    pcl::PointCloud<pcl::PointXYZ>::Ptr detections_pcl(new pcl::PointCloud<pcl::PointXYZ>);
-    detections_pcl->header.frame_id = "os_sensor";
-    this->associations_->clearDetections();
-    for (int i = 0; i < this->interface_->getDetections().at(0).size(); i++){
-      detections_pcl->push_back(pcl::PointXYZ(this->interface_->getDetections().at(0).at(i).x,
-                                              this->interface_->getDetections().at(0).at(i).y, 0.0));
-      static_data_association::DalmrPolyDetection detection(Eigen::Vector3d(this->interface_->getDetections().at(0).at(i).x, 
-                                                                            this->interface_->getDetections().at(0).at(i).y, 
-                                                                            this->interface_->getDetections().at(0).at(i).z),
-					                                                                  this->interface_->getDetections().at(0).at(i).id);
-      this->associations_->addDetection(std::make_unique<static_data_association::DalmrPolyDetection>(detection));
-    }
-    this->detection_publisher_.publish(*detections_pcl);
-    // DEBUG
-    //std::cout << "DETECTIONS M: " << this->associations_->getDetections().size() << std::endl;
-
-    //// 3) DA: Compute data association
-    //// ICP
-    pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
-    icp.setInputSource(detections_pcl);
-    icp.setInputTarget(landmarks_pcl);
-  
-    pcl::PointCloud<pcl::PointXYZ>::Ptr coregistered_pcl(new pcl::PointCloud<pcl::PointXYZ>);
-    icp.align(*coregistered_pcl);
-
-    Eigen::Matrix4d tf = icp.getFinalTransformation().cast<double>();
-
-    //std::cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << std::endl;
-    //std::cout << tf << std::endl;
-
-    pcl::VoxelGrid<pcl::PointXYZ> vg;
-    vg.setInputCloud(coregistered_pcl);
-    vg.setLeafSize(1.5f, 1.5f, 100.0f);
-    vg.filter(*coregistered_pcl);
-    coregistered_pcl->header.frame_id = "os_sensor";
-    this->corregist_publisher_.publish(*coregistered_pcl);
-
-    Eigen::Quaterniond tf_q(tf.block<3, 3>(0, 0));
-    Eigen::Vector3d tf_p = tf.block<3, 1>(0, 3);
-    Eigen::Vector3d tf_a = tf_q.toRotationMatrix().eulerAngles(0, 1, 2);
-    double tf_yaw = abs(tf_a.z());
-    double tf_dist = sqrt(pow(tf_p(0), 2) + pow(tf_p(1), 2));
-    this->optimization_->addRotationTransform(tf_yaw);
-    this->optimization_->addTranslationTransform(tf_dist);
-
-    Eigen::Affine3d tf_aff(Eigen::Affine3f::Identity());
-    tf_aff.matrix() = tf;
-
-    //std::cout << "YAW: " << tf_yaw << std::endl;
-    //std::cout << "DISTANCE: " << tf_dist << std::endl;
-
-    //// 4) DA: Generate associations TF constraint
-    bool key_frame = count > 20 && this->associations_->getLandmarks().size() > 50 /*&& (id%2 == 0)*/; // TODO: Get from param
-    bool option_da =  tf_dist < this->optimization_->getTranslationVariance() * 2 &&
-                      tf_yaw  < this->optimization_->getRotationVariance() * 2;
-    /*
-    //// ASSOCIATION CONSTRAINT USING TF
-    if (key_frame){ 
-      geo_referencing::AssoConstraint constraints_asso;
-      constraints_asso.id = id;
-      constraints_asso.p = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p + 
-                           this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q * tf_p;
-      constraints_asso.q = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q * tf_q;
-      constraints_asso.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
-      constraints_asso.information = constraints_asso.covariance.inverse();
-      this->optimization_->addAssoConstraint (constraints_asso);
-      count = 21;
-    }
-    */
-    //// ASSOCIATION CONSTRAINT USING POINTS
-    pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
-    kdtree.setInputCloud(landmarks_pcl);
-    int K = 10;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr landmarks_debug(new pcl::PointCloud<pcl::PointXYZ>);
-    landmarks_debug->header.frame_id = "map";
-    if (key_frame){ 
-      std::cout << "Data Association: ICP" << std::endl;
-      geo_referencing::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
-      for (int i = 0; i < coregistered_pcl->points.size(); i++){
-        // Nearest point "landmarks_pcl"
-        std::vector<int> pointIdxKNNSearch(K);
-        std::vector<float> pointKNNSquaredDistance(K);
-        pcl::PointXYZ search_point = coregistered_pcl->points.at(i);
-        if (kdtree.nearestKSearch (search_point, K, pointIdxKNNSearch, pointKNNSquaredDistance) > 0){
-          if (sqrt(pointKNNSquaredDistance[0]) < 1.0){ // TODO: Get from param
-            geo_referencing::AssoPointsConstraint constraints_asso_pt;
-            
-            constraints_asso_pt.id = id;
-            constraints_asso_pt.landmark = Eigen::Vector3d(this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).x,
-                                                           this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).y,
-                                                           0.0);
-            constraints_asso_pt.detection = tf_aff.inverse() * Eigen::Vector3d(coregistered_pcl->points.at(i).x,
-                                                                               coregistered_pcl->points.at(i).y,
-                                                                               0.0);
-            
-            constraints_asso_pt.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
-            constraints_asso_pt.information = constraints_asso_pt.covariance.inverse();
-
-            constraints_asso_pt_ss.push_back(constraints_asso_pt);
-
-            landmarks_debug->push_back(pcl::PointXYZ(this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).x,
-                                                     this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).y,
-                                                     0.0));
-          }
-        }
-      }
-      count = 21;
-      this->optimization_->addAssoPointConstraintsSingleShot (constraints_asso_pt_ss);
-      this->landmarks_publisher_.publish(*landmarks_debug);
-    }else{
-      /*
-      if (!option_da){
-        std::cout << "Data Association: NN" << std::endl;
-        vg.setInputCloud(detections_pcl);
-        vg.setLeafSize(1.5f, 1.5f, 100.0f);
-        vg.filter(*detections_pcl);
-        geo_referencing::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
-        for (int i = 0; i < detections_pcl->points.size(); i++){
-          // Nearest point "landmarks_pcl"
-          std::vector<int> pointIdxKNNSearch(K);
-          std::vector<float> pointKNNSquaredDistance(K);
-          pcl::PointXYZ search_point = detections_pcl->points.at(i);
-          if (kdtree.nearestKSearch (search_point, K, pointIdxKNNSearch, pointKNNSquaredDistance) > 0){
-            if (sqrt(pointKNNSquaredDistance[0]) < 1.0){ // TODO: Get from param
-              geo_referencing::AssoPointsConstraint constraints_asso_pt;
-              
-              constraints_asso_pt.id = id;
-              constraints_asso_pt.landmark = Eigen::Vector3d(this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).x,
-                                                             this->map_.at(landmarks_i.at(pointIdxKNNSearch[0])).at(landmarks_j.at(pointIdxKNNSearch[0])).y,
-                                                             0.0);
-              constraints_asso_pt.detection = Eigen::Vector3d(detections_pcl->points.at(i).x,
-                                                              detections_pcl->points.at(i).y,
-                                                              0.0);
-              
-              constraints_asso_pt.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
-              constraints_asso_pt.information = constraints_asso_pt.covariance.inverse();
-
-              constraints_asso_pt_ss.push_back(constraints_asso_pt);
-            }
-          }
-        }
-        this->optimization_->addAssoPointConstraintsSingleShot (constraints_asso_pt_ss);
-      }
-      */
-    }
-
-    //////////////////////////////////////////////////////////////////////////////////////////////
     //// *) Compute optimization problem
-    if (this->optimization_->getPriorConstraints().size() > 4){
-      float x_min = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - 5).p.x();
-      float y_min = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - 5).p.y();
+    int frequency = 3;
+    if (this->optimization_->getPriorConstraints().size() > 4*frequency){ // TODO: get from param
+      float x_min = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - (4*frequency + 1)).p.x();
+      float y_min = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - (4*frequency + 1)).p.y();
       float x_max = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - 1).p.x();
       float y_max = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - 1).p.y();
       
       //std::cout << "DISTANCE PRIOR: " << sqrt(pow(x_max-x_min,2) + pow(y_max-y_min,2)) << std::endl;
-      if (sqrt(pow(x_max-x_min,2) + pow(y_max-y_min,2)) > 5.0){
+      if (sqrt(pow(x_max-x_min,2) + pow(y_max-y_min,2)) > 1.0){
         this->computeOptimizationProblem();
-        count++;
+        this->count_ = this->count_ + 1;
       } 
     }
-    
-
-
 
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -448,7 +243,8 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
   // loop time
   end = ros::Time::now().toSec();
-  std::cout << "TIME LOOP: " << end - ini << std::endl;
+  std::cout << "ODOMETRY TIME LOOP: " << end - ini << std::endl;
+  std::cout << "ODOMETRY SEQUENCE: " << msg->header.seq << std::endl;
 
   this->alg_.unlock();
 }
@@ -476,12 +272,96 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   //ROS_INFO("GeoLocalizationAlgNode::detc_callback: New Message Received");
   this->alg_.lock();
 
-  pcl::PCLPointCloud2 detect_pcl2;
-  //static pcl::PointCloud<pcl::PointXYZ> detect_pcl;
-  this->last_detect_pcl_.clear();
+  double ini, end;
+  ini = ros::Time::now().toSec();
 
+  pcl::PCLPointCloud2 detect_pcl2;
+  this->last_detect_pcl_.clear();
   pcl_conversions::toPCL(*msg, detect_pcl2);
   pcl::fromPCLPointCloud2(detect_pcl2, this->last_detect_pcl_);
+
+  int id = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).id; //msg->header.seq - 1; // TODO: Remove '- 1' when is lidar seq.
+
+  //////////////////////////////////////////////////////////////////////////////////////////////
+  //// 1) DA: Generate Landmarks in interface from map.
+  static_data_representation::Pose2D position;
+  position.x = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.x();
+  position.y = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.y();
+  this->interface_->createLandmarksFromMap(position);
+
+  // Transform landmarks to base(lidar) frame.
+  static_data_representation::Tf tf_lidar2map;
+  tf_lidar2map.linear() = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q.toRotationMatrix();
+  tf_lidar2map.translation() = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
+  this->interface_->applyTfFromLandmarksToBaseFrame(tf_lidar2map);
+
+  // Parse interface landmarks to PCL and plot it.
+  this->interface_->parseLandmarksToPcl("os_sensor");
+  this->landmarks_publisher_.publish(*this->interface_->getLandmarksPcl());
+
+  //// 2) DA: Generate detections in interface from msg.
+  static_data_representation::PolylineMap detections;
+  static_data_representation::Polyline positions_way;
+  for (int i = 0; i < this->last_detect_pcl_.points.size(); i++){
+    float point_sf_x = this->last_detect_pcl_.points.at(i).x;
+    float point_sf_y = this->last_detect_pcl_.points.at(i).y;
+    float distance = sqrt(pow(point_sf_x, 2) + pow(point_sf_y, 2));
+    if (distance < this->map_config_.radious_dt){
+      static_data_representation::PolylinePoint pt;
+      pt.x = point_sf_x;
+      pt.y = point_sf_y;
+      pt.z = 0.0;
+      pt.id = i;
+      positions_way.push_back(pt);
+    }
+  }
+  detections.push_back(positions_way);
+  this->interface_->setDetections(detections);
+
+  // Parse interface detections to PCL and plot it.
+  this->interface_->parseDetectionsToPcl("os_sensor");
+  this->detection_publisher_.publish(*this->interface_->getDetectionsPcl());
+
+  //// 3) DA: Compute data association
+  //// ICP
+  Eigen::Matrix4d tf;
+  static_data_representation::AssociationsVector associations;
+  this->interface_->dataAssociationIcp("os_sensor", tf, associations);
+  this->corregist_publisher_.publish(*this->interface_->getCoregisteredPcl());
+
+  // Update DA evolution
+  Eigen::Quaterniond tf_q(tf.block<3, 3>(0, 0));
+  Eigen::Vector3d tf_p = tf.block<3, 1>(0, 3);
+  Eigen::Vector3d tf_a = tf_q.toRotationMatrix().eulerAngles(0, 1, 2);
+  double tf_yaw = abs(tf_a.z());
+  double tf_dist = sqrt(pow(tf_p(0), 2) + pow(tf_p(1), 2));
+  this->optimization_->addRotationTransform(tf_yaw);
+  this->optimization_->addTranslationTransform(tf_dist);
+
+  //// 4) DA: Generate associations TF constraint
+  bool key_frame = this->count_ > 20; // TODO: Get from param
+  if (key_frame){ 
+    geo_referencing::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
+    for (int i = 0; i < associations.size(); i++){
+      geo_referencing::AssoPointsConstraint constraints_asso_pt;
+      
+      constraints_asso_pt.id = id;
+      constraints_asso_pt.landmark = associations.at(i).first;
+      constraints_asso_pt.detection = associations.at(i).second;
+      
+      constraints_asso_pt.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
+      constraints_asso_pt.information = constraints_asso_pt.covariance.inverse();
+
+      constraints_asso_pt_ss.push_back(constraints_asso_pt);
+    }
+    this->count_ = 21;
+    this->optimization_->addAssoPointConstraintsSingleShot (constraints_asso_pt_ss);
+  }
+
+  // loop time
+  end = ros::Time::now().toSec();
+  std::cout << "DATA TIME LOOP: " << end - ini << std::endl;
+  std::cout << "DATA SEQUENCE: " << msg->header.seq << std::endl;
 
   this->alg_.unlock();
 }
@@ -594,7 +474,7 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
     for (int j = 0; j < this->map_.at(i).size(); j++){
       marker.pose.position.x = this->map_.at(i).at(j).x;
       marker.pose.position.y = this->map_.at(i).at(j).y;
-      marker.pose.position.z = this->map_.at(i).at(j).z;
+      marker.pose.position.z = 0.0; //this->map_.at(i).at(j).z;
       marker.pose.orientation.x = 0.0;
       marker.pose.orientation.y = 0.0;
       marker.pose.orientation.z = 0.0;

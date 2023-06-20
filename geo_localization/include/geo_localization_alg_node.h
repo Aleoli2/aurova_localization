@@ -64,6 +64,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
   
     double lat_zero_;
     double lon_zero_;
+    int count_;
     std::string frame_id_;
     pcl::PointCloud<pcl::PointXYZ> last_detect_pcl_;
     static_data_representation::ConfigParams map_config_;
