@@ -7,13 +7,20 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   //// Init class attributes if necessary
   this->public_node_handle_.getParam("/geo_localization/url_to_map", this->map_config_.url_to_map);
   this->public_node_handle_.getParam("/geo_localization/sample_distance", this->map_config_.sample_distance);
+  this->public_node_handle_.getParam("/geo_localization/threshold_asso", this->map_config_.threshold_asso);
+  this->public_node_handle_.getParam("/geo_localization/voxel_asso", this->map_config_.voxel_asso);
   this->public_node_handle_.getParam("/geo_localization/radious_dt", this->map_config_.radious_dt);
   this->public_node_handle_.getParam("/geo_localization/radious_lm", this->map_config_.radious_lm);
+  this->public_node_handle_.getParam("/geo_localization/z_weight", this->map_config_.z_weight);
 
   this->public_node_handle_.getParam("/geo_localization/window_size", this->loc_config_.window_size);
+  this->public_node_handle_.getParam("/geo_localization/max_num_iterations_op", this->loc_config_.max_num_iterations_op);
 
   this->public_node_handle_.getParam("/geo_localization/lat_zero", this->lat_zero_);
   this->public_node_handle_.getParam("/geo_localization/lon_zero", this->lon_zero_);
+  this->public_node_handle_.getParam("/geo_localization/margin_asso_constraints", this->margin_asso_constraints_);
+  this->public_node_handle_.getParam("/geo_localization/margin_gnss_constraints", this->margin_gnss_constraints_);
+  this->public_node_handle_.getParam("/geo_localization/margin_gnss_distance", this->margin_gnss_distance_);
   this->public_node_handle_.getParam("/geo_localization/frame_id", this->frame_id_);
   if(!this->private_node_handle_.getParam("rate", this->config_.rate))
   {
@@ -31,7 +38,6 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->map_config_.utm2map_tr.y = this->tf_to_utm_.transform.translation.y;
 
   //// Read map from file.
-  // Sample distance // TODO: get from params
   this->interface_ = new static_data_representation::InterfaceAP(this->map_config_);
   this->interface_->readMapFromFile();
   this->interface_->samplePolylineMap();
@@ -139,15 +145,13 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     //////////////////////////////////////////////////////////////////////////////////////////////
     //// *) Compute optimization problem
-    int frequency = 3;
-    if (this->optimization_->getPriorConstraints().size() > 4*frequency){ // TODO: get from param
-      float x_min = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - (4*frequency + 1)).p.x();
-      float y_min = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - (4*frequency + 1)).p.y();
+    if (this->optimization_->getPriorConstraints().size() > this->margin_gnss_constraints_){
+      float x_min = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - (this->margin_gnss_constraints_ + 1)).p.x();
+      float y_min = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - (this->margin_gnss_constraints_ + 1)).p.y();
       float x_max = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - 1).p.x();
       float y_max = this->optimization_->getPriorConstraints().at(this->optimization_->getPriorConstraints().size() - 1).p.y();
       
-      //std::cout << "DISTANCE PRIOR: " << sqrt(pow(x_max-x_min,2) + pow(y_max-y_min,2)) << std::endl;
-      if (sqrt(pow(x_max-x_min,2) + pow(y_max-y_min,2)) > 1.0){
+      if (sqrt(pow(x_max-x_min,2) + pow(y_max-y_min,2)) > this->margin_gnss_distance_){
         this->computeOptimizationProblem();
         this->count_ = this->count_ + 1;
       } 
@@ -280,7 +284,7 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   pcl_conversions::toPCL(*msg, detect_pcl2);
   pcl::fromPCLPointCloud2(detect_pcl2, this->last_detect_pcl_);
 
-  int id = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).id; //msg->header.seq - 1; // TODO: Remove '- 1' when is lidar seq.
+  int id = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).id;
 
   //////////////////////////////////////////////////////////////////////////////////////////////
   //// 1) DA: Generate Landmarks in interface from map.
@@ -339,8 +343,8 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   this->optimization_->addTranslationTransform(tf_dist);
 
   //// 4) DA: Generate associations TF constraint
-  bool key_frame = this->count_ > 20; // TODO: Get from param
-  if (key_frame){ 
+  bool key_frame = this->count_ > this->margin_asso_constraints_;
+  if (key_frame){
     geo_referencing::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
     for (int i = 0; i < associations.size(); i++){
       geo_referencing::AssoPointsConstraint constraints_asso_pt;
@@ -354,7 +358,7 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
 
       constraints_asso_pt_ss.push_back(constraints_asso_pt);
     }
-    this->count_ = 21;
+    this->count_ = this->margin_asso_constraints_ + 1;
     this->optimization_->addAssoPointConstraintsSingleShot (constraints_asso_pt_ss);
   }
 
