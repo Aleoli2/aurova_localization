@@ -5,16 +5,18 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
 {
 
   //// Init class attributes if necessary
-  this->public_node_handle_.getParam("/geo_localization/url_to_map", this->map_config_.url_to_map);
-  this->public_node_handle_.getParam("/geo_localization/sample_distance", this->map_config_.sample_distance);
-  this->public_node_handle_.getParam("/geo_localization/threshold_asso", this->map_config_.threshold_asso);
-  this->public_node_handle_.getParam("/geo_localization/voxel_asso", this->map_config_.voxel_asso);
-  this->public_node_handle_.getParam("/geo_localization/radious_dt", this->map_config_.radious_dt);
-  this->public_node_handle_.getParam("/geo_localization/radious_lm", this->map_config_.radious_lm);
-  this->public_node_handle_.getParam("/geo_localization/z_weight", this->map_config_.z_weight);
+  this->public_node_handle_.getParam("/geo_localization/url_to_map", this->data_config_.url_to_map);
+  this->public_node_handle_.getParam("/geo_localization/sample_distance", this->data_config_.sample_distance);
+  this->public_node_handle_.getParam("/geo_localization/threshold_asso", this->data_config_.threshold_asso);
+  this->public_node_handle_.getParam("/geo_localization/voxel_asso", this->data_config_.voxel_asso);
+  this->public_node_handle_.getParam("/geo_localization/radious_dt", this->data_config_.radious_dt);
+  this->public_node_handle_.getParam("/geo_localization/radious_lm", this->data_config_.radious_lm);
+  this->public_node_handle_.getParam("/geo_localization/acum_tf_da", this->data_config_.acum_tf_da);
+  this->public_node_handle_.getParam("/geo_localization/acum_tf_varfactor", this->data_config_.acum_tf_varfactor);
+  this->public_node_handle_.getParam("/geo_localization/z_weight", this->data_config_.z_weight);
 
-  this->public_node_handle_.getParam("/geo_localization/window_size", this->loc_config_.window_size);
-  this->public_node_handle_.getParam("/geo_localization/max_num_iterations_op", this->loc_config_.max_num_iterations_op);
+  this->public_node_handle_.getParam("/geo_localization/window_size", this->optimization_config_.window_size);
+  this->public_node_handle_.getParam("/geo_localization/max_num_iterations_op", this->optimization_config_.max_num_iterations_op);
 
   this->public_node_handle_.getParam("/geo_localization/lat_zero", this->lat_zero_);
   this->public_node_handle_.getParam("/geo_localization/lon_zero", this->lon_zero_);
@@ -34,20 +36,20 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   //// Generate transform between map and utm (lat/long zero requiered).
   this->fromUtmTransform();
   this->mapToOdomInit();
-  this->map_config_.utm2map_tr.x = this->tf_to_utm_.transform.translation.x;
-  this->map_config_.utm2map_tr.y = this->tf_to_utm_.transform.translation.y;
+  this->data_config_.utm2map_tr.x = this->tf_to_utm_.transform.translation.x;
+  this->data_config_.utm2map_tr.y = this->tf_to_utm_.transform.translation.y;
 
   //// Read map from file.
-  this->interface_ = new static_data_representation::InterfaceAP(this->map_config_);
-  this->interface_->readMapFromFile();
-  this->interface_->samplePolylineMap();
-  this->map_ = this->interface_->getMap();
+  this->data_ = new data_processing::DataProcessing(this->data_config_);
+  this->data_->readMapFromFile();
+  this->data_->samplePolylineMap();
+  this->data_->addRotationDaEvolution(1.57); // Initialize data association evolution variance
+  this->data_->addTranslationDaEvolution(10.0);
+  this->map_ = this->data_->getMap();
 
   //// Localization init
-  this->optimization_ = new geo_referencing::OptimizationProcess(this->loc_config_);
+  this->optimization_ = new optimization_process::OptimizationProcess(this->optimization_config_);
   this->optimization_->initializeState();
-  this->optimization_->addRotationTransform(1.57);
-  this->optimization_->addTranslationTransform(10.0);
 
   //// Plot map in Rviz.
   this->parseMapToRosMarker(this->marker_array_);
@@ -133,7 +135,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->optimization_->propagateState (p_a, q_a, p_b, q_b, id);
 
     //// 2) ODOM: Generate odometry constraint
-    geo_referencing::OdometryConstraint constraint_odom;
+    optimization_process::OdometryConstraint constraint_odom;
     constraint_odom.id_begin = msg_prev.header.seq;
     constraint_odom.id_end = id;
     constraint_odom.tf_q = q_a.conjugate() * q_b;
@@ -176,10 +178,10 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->localization_msg_.pose.pose.orientation.z = this->optimization_->getTrajectoryEstimated().at(size-1).q.z();
     this->localization_msg_.pose.pose.orientation.w = this->optimization_->getTrajectoryEstimated().at(size-1).q.w();
 
-    this->localization_msg_.pose.covariance[0] = this->optimization_->getTranslationVariance() * 2;
-    this->localization_msg_.pose.covariance[7] = this->optimization_->getTranslationVariance() * 2;
+    this->localization_msg_.pose.covariance[0] = this->data_->getTranslationVarianceDaEvolution();
+    this->localization_msg_.pose.covariance[7] = this->data_->getTranslationVarianceDaEvolution();
     this->localization_msg_.pose.covariance[14] = 0.1;
-    this->localization_msg_.pose.covariance[35] = this->optimization_->getRotationVariance() * 2;
+    this->localization_msg_.pose.covariance[35] = this->data_->getRotationVarianceDaEvolution();
 
     this->localization_publisher_.publish(this->localization_msg_);
     ////////////////////////////////////////////////////////////////////////////////
@@ -260,7 +262,7 @@ void GeoLocalizationAlgNode::gnss_callback(const nav_msgs::Odometry::ConstPtr& m
 
   Eigen::Matrix<double, 3, 1> p(msg->pose.pose.position.x, msg->pose.pose.position.y, 0.0);
 
-  geo_referencing::PriorConstraint constraint_prior;
+  optimization_process::PriorConstraint constraint_prior;
   constraint_prior.id = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).id;
   constraint_prior.p = p;
   constraint_prior.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
@@ -288,30 +290,30 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
 
   //////////////////////////////////////////////////////////////////////////////////////////////
   //// 1) DA: Generate Landmarks in interface from map.
-  static_data_representation::Pose2D position;
+  data_processing::Pose2D position;
   position.x = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.x();
   position.y = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.y();
-  this->interface_->createLandmarksFromMap(position);
+  this->data_->createLandmarksFromMap(position);
 
   // Transform landmarks to base(lidar) frame.
-  static_data_representation::Tf tf_lidar2map;
+  data_processing::Tf tf_lidar2map;
   tf_lidar2map.linear() = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q.toRotationMatrix();
   tf_lidar2map.translation() = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
-  this->interface_->applyTfFromLandmarksToBaseFrame(tf_lidar2map);
+  this->data_->applyTfFromLandmarksToBaseFrame(tf_lidar2map);
 
   // Parse interface landmarks to PCL and plot it.
-  this->interface_->parseLandmarksToPcl("os_sensor");
-  this->landmarks_publisher_.publish(*this->interface_->getLandmarksPcl());
+  this->data_->parseLandmarksToPcl("os_sensor");
+  this->landmarks_publisher_.publish(*this->data_->getLandmarksPcl());
 
   //// 2) DA: Generate detections in interface from msg.
-  static_data_representation::PolylineMap detections;
-  static_data_representation::Polyline positions_way;
+  data_processing::PolylineMap detections;
+  data_processing::Polyline positions_way;
   for (int i = 0; i < this->last_detect_pcl_.points.size(); i++){
     float point_sf_x = this->last_detect_pcl_.points.at(i).x;
     float point_sf_y = this->last_detect_pcl_.points.at(i).y;
     float distance = sqrt(pow(point_sf_x, 2) + pow(point_sf_y, 2));
-    if (distance < this->map_config_.radious_dt){
-      static_data_representation::PolylinePoint pt;
+    if (distance < this->data_config_.radious_dt){
+      data_processing::PolylinePoint pt;
       pt.x = point_sf_x;
       pt.y = point_sf_y;
       pt.z = 0.0;
@@ -320,34 +322,25 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
     }
   }
   detections.push_back(positions_way);
-  this->interface_->setDetections(detections);
+  this->data_->setDetections(detections);
 
   // Parse interface detections to PCL and plot it.
-  this->interface_->parseDetectionsToPcl("os_sensor");
-  this->detection_publisher_.publish(*this->interface_->getDetectionsPcl());
+  this->data_->parseDetectionsToPcl("os_sensor");
+  this->detection_publisher_.publish(*this->data_->getDetectionsPcl());
 
   //// 3) DA: Compute data association
   //// ICP
   Eigen::Matrix4d tf;
-  static_data_representation::AssociationsVector associations;
-  this->interface_->dataAssociationIcp("os_sensor", tf, associations);
-  this->corregist_publisher_.publish(*this->interface_->getCoregisteredPcl());
-
-  // Update DA evolution
-  Eigen::Quaterniond tf_q(tf.block<3, 3>(0, 0));
-  Eigen::Vector3d tf_p = tf.block<3, 1>(0, 3);
-  Eigen::Vector3d tf_a = tf_q.toRotationMatrix().eulerAngles(0, 1, 2);
-  double tf_yaw = abs(tf_a.z());
-  double tf_dist = sqrt(pow(tf_p(0), 2) + pow(tf_p(1), 2));
-  this->optimization_->addRotationTransform(tf_yaw);
-  this->optimization_->addTranslationTransform(tf_dist);
+  data_processing::AssociationsVector associations;
+  this->data_->dataAssociationIcp("os_sensor", tf, associations);
+  this->corregist_publisher_.publish(*this->data_->getCoregisteredPcl());
 
   //// 4) DA: Generate associations TF constraint
   bool key_frame = this->count_ > this->margin_asso_constraints_;
   if (key_frame){
-    geo_referencing::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
+    optimization_process::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
     for (int i = 0; i < associations.size(); i++){
-      geo_referencing::AssoPointsConstraint constraints_asso_pt;
+      optimization_process::AssoPointsConstraint constraints_asso_pt;
       
       constraints_asso_pt.id = id;
       constraints_asso_pt.landmark = associations.at(i).first;

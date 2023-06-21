@@ -26,9 +26,8 @@
 #define _geo_localization_alg_node_h_
 
 #include <iri_base_algorithm/iri_base_algorithm.h>
-#include <localization/interface_ap.h>
+#include <localization/data_processing.h>
 #include <localization/optimization_process.h>
-#include <localization/association_problem.h>
 #include <localization/latlong_utm.h>
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
@@ -70,12 +69,11 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     float margin_gnss_distance_;
     std::string frame_id_;
     pcl::PointCloud<pcl::PointXYZ> last_detect_pcl_;
-    static_data_representation::ConfigParams map_config_;
-    static_data_representation::PolylineMap map_;
-    static_data_representation::InterfaceAP *interface_;
-    static_data_association::AssociationProblem *associations_;
-    geo_referencing::OptimizationProcess *optimization_;
-    geo_referencing::ConfigParams loc_config_;
+    data_processing::ConfigParams data_config_;
+    data_processing::PolylineMap map_;
+    data_processing::DataProcessing *data_;
+    optimization_process::OptimizationProcess *optimization_;
+    optimization_process::ConfigParams optimization_config_;
     geometry_msgs::TransformStamped tf_to_utm_;
     geometry_msgs::TransformStamped tf_to_map_;
     tf::TransformBroadcaster broadcaster_;
