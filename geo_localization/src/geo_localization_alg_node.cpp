@@ -159,6 +159,9 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
       } 
     }
 
+    //// DEBUG
+    std::cout << "x_error: " << this->optimization_->getPriorError().x() << std::endl;
+    std::cout << "y_error: " << this->optimization_->getPriorError().y() << std::endl;
 
     ////////////////////////////////////////////////////////////////////////////////
     //// REPRESENTATION (output)
@@ -249,8 +252,8 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
   // loop time
   end = ros::Time::now().toSec();
-  std::cout << "ODOMETRY TIME LOOP: " << end - ini << std::endl;
-  std::cout << "ODOMETRY SEQUENCE: " << msg->header.seq << std::endl;
+  //std::cout << "ODOMETRY TIME LOOP: " << end - ini << std::endl;
+  //std::cout << "ODOMETRY SEQUENCE: " << msg->header.seq << std::endl;
 
   this->alg_.unlock();
 }
@@ -262,6 +265,8 @@ void GeoLocalizationAlgNode::gnss_callback(const nav_msgs::Odometry::ConstPtr& m
 
   Eigen::Matrix<double, 3, 1> p(msg->pose.pose.position.x, msg->pose.pose.position.y, 0.0);
 
+  //////////////////////////////////////////////////////////////////////////////////////////////
+  //// 1) PRIOR: Generate position constraint.
   optimization_process::PriorConstraint constraint_prior;
   constraint_prior.id = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).id;
   constraint_prior.p = p;
@@ -357,8 +362,8 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
 
   // loop time
   end = ros::Time::now().toSec();
-  std::cout << "DATA TIME LOOP: " << end - ini << std::endl;
-  std::cout << "DATA SEQUENCE: " << msg->header.seq << std::endl;
+  //std::cout << "DATA TIME LOOP: " << end - ini << std::endl;
+  //std::cout << "DATA SEQUENCE: " << msg->header.seq << std::endl;
 
   this->alg_.unlock();
 }
@@ -510,6 +515,7 @@ void GeoLocalizationAlgNode::computeOptimizationProblem (void)
 	if (index > 0) this->optimization_->generateOdomResiduals(loss_function, quaternion_local_parameterization, &problem);
   if (index > 0) this->optimization_->generatePriorResiduals(loss_function, quaternion_local_parameterization, &problem);
   if (index > 0) this->optimization_->generateAssoPointResiduals(loss_function, quaternion_local_parameterization, &problem);
+  if (index > 0) this->optimization_->generatePriorErrorResiduals(loss_function, quaternion_local_parameterization, &problem);
 
 	//////////////////////////////////////////////////////////////////////
 	//// SOLVE OPTIMIZATION PROBLEM
