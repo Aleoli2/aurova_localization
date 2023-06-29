@@ -67,6 +67,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     int margin_asso_constraints_;
     int margin_gnss_constraints_;
     float margin_gnss_distance_;
+    bool flag_gps_corr_;
     std::string frame_id_;
     pcl::PointCloud<pcl::PointXYZ> last_detect_pcl_;
     data_processing::ConfigParams data_config_;
@@ -86,6 +87,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     ros::Publisher landmarks_publisher_;
     ros::Publisher detection_publisher_;
     ros::Publisher corregist_publisher_;
+    ros::Publisher gpscorrected_publisher_;
     nav_msgs::Odometry localization_msg_;
 
     // [subscriber attributes]

@@ -32,6 +32,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
     this->setRate(this->config_.rate);
   
   this->count_ = 0;
+  this->flag_gps_corr_ = false;
 
   //// Generate transform between map and utm (lat/long zero requiered).
   this->fromUtmTransform();
@@ -60,6 +61,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->landmarks_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/landmarks", 1);
   this->detection_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/detections", 1);
   this->corregist_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/corregistered", 1);
+  this->gpscorrected_publisher_ = this->public_node_handle_.advertise <nav_msgs::Odometry> ("/odometry_gps_corrected", 1);
   
   // [init subscribers]
   this->odom_subscriber_ = this->public_node_handle_.subscribe("/odom", 1, &GeoLocalizationAlgNode::odom_callback, this);
@@ -158,10 +160,6 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
         this->count_ = this->count_ + 1;
       } 
     }
-
-    //// DEBUG
-    std::cout << "x_error: " << this->optimization_->getPriorError().x() << std::endl;
-    std::cout << "y_error: " << this->optimization_->getPriorError().y() << std::endl;
 
     ////////////////////////////////////////////////////////////////////////////////
     //// REPRESENTATION (output)
@@ -262,18 +260,43 @@ void GeoLocalizationAlgNode::gnss_callback(const nav_msgs::Odometry::ConstPtr& m
 {
   //ROS_INFO("GeoLocalizationAlgNode::gnss_callback: New Message Received");
   this->alg_.lock();
-
-  Eigen::Matrix<double, 3, 1> p(msg->pose.pose.position.x, msg->pose.pose.position.y, 0.0);
+  
+  //// Prevent wrong corrections
+  double x_bridge, y_bridge;
+  if (this->flag_gps_corr_){
+    x_bridge = msg->pose.pose.position.x - this->optimization_->getPriorError().x();
+    y_bridge = msg->pose.pose.position.y - this->optimization_->getPriorError().y();
+  }else{
+    x_bridge = msg->pose.pose.position.x;
+    y_bridge = msg->pose.pose.position.y;
+  }
+  Eigen::Matrix<double, 3, 1> p(x_bridge, y_bridge, 0.0);
+  Eigen::Matrix<double, 3, 1> p_raw(msg->pose.pose.position.x, msg->pose.pose.position.y, 0.0);
 
   //////////////////////////////////////////////////////////////////////////////////////////////
   //// 1) PRIOR: Generate position constraint.
   optimization_process::PriorConstraint constraint_prior;
   constraint_prior.id = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).id;
   constraint_prior.p = p;
-  constraint_prior.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
+  constraint_prior.p_raw = p_raw;
+  constraint_prior.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
   constraint_prior.information = constraint_prior.covariance.inverse();
 
   this->optimization_->addPriorConstraint (constraint_prior);
+
+  //// 2) PRIOR: Publish corrected GPS.
+  nav_msgs::Odometry gps_corr;
+  gps_corr.header = msg->header;
+  gps_corr.pose = msg->pose;
+  gps_corr.pose.pose.position.x = msg->pose.pose.position.x - this->optimization_->getPriorError().x();
+  gps_corr.pose.pose.position.y = msg->pose.pose.position.y - this->optimization_->getPriorError().y();
+  gps_corr.twist = msg->twist;
+  gps_corr.child_frame_id = msg->child_frame_id;
+  this->gpscorrected_publisher_.publish(gps_corr);
+
+  //// DEBUG
+  std::cout << "x_error: " << this->optimization_->getPriorError().x() << std::endl;
+  std::cout << "y_error: " << this->optimization_->getPriorError().y() << std::endl;
 
   this->alg_.unlock();
 }
@@ -358,6 +381,7 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
     }
     this->count_ = this->margin_asso_constraints_ + 1;
     this->optimization_->addAssoPointConstraintsSingleShot (constraints_asso_pt_ss);
+    this->flag_gps_corr_ = true;
   }
 
   // loop time
