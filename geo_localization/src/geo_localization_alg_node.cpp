@@ -33,6 +33,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   
   this->count_ = 0;
   this->flag_gps_corr_ = false;
+  this->asso_weight_ = 100.0;
 
   //// Generate transform between map and utm (lat/long zero requiered).
   this->fromUtmTransform();
@@ -361,9 +362,11 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   Eigen::Matrix4d tf;
   data_processing::AssociationsVector associations;
   this->data_->dataAssociationIcp("os_sensor", tf, associations);
-  this->corregist_publisher_.publish(*this->data_->getCoregisteredPcl());
+  this->data_->parseAssociationsToPcl("map", associations);
+  this->corregist_publisher_.publish(*this->data_->getAssociatedPcl());
 
   //// 4) DA: Generate associations TF constraint
+  std::cout << "ASSO WEIGHT: " << this->asso_weight_ << std::endl;
   bool key_frame = this->count_ > this->margin_asso_constraints_;
   if (key_frame){
     optimization_process::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
@@ -373,6 +376,8 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
       constraints_asso_pt.id = id;
       constraints_asso_pt.landmark = associations.at(i).first;
       constraints_asso_pt.detection = associations.at(i).second;
+
+      constraints_asso_pt.asso_weight = this->asso_weight_ / 100.0;
       
       constraints_asso_pt.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
       constraints_asso_pt.information = constraints_asso_pt.covariance.inverse();
@@ -404,6 +409,7 @@ void GeoLocalizationAlgNode::node_config_update(Config &config, uint32_t level)
   if(config.rate!=this->getRate())
     this->setRate(config.rate);
   this->config_=config;
+  this->asso_weight_ = config.asso_weight;
   this->alg_.unlock();
 }
 
@@ -500,7 +506,7 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
     for (int j = 0; j < this->map_.at(i).size(); j++){
       marker.pose.position.x = this->map_.at(i).at(j).x;
       marker.pose.position.y = this->map_.at(i).at(j).y;
-      marker.pose.position.z = 0.0; //this->map_.at(i).at(j).z;
+      marker.pose.position.z = this->map_.at(i).at(j).z;
       marker.pose.orientation.x = 0.0;
       marker.pose.orientation.y = 0.0;
       marker.pose.orientation.z = 0.0;
