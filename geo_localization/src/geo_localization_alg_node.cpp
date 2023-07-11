@@ -14,6 +14,10 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->public_node_handle_.getParam("/geo_localization/acum_tf_da", this->data_config_.acum_tf_da);
   this->public_node_handle_.getParam("/geo_localization/acum_tf_varfactor", this->data_config_.acum_tf_varfactor);
   this->public_node_handle_.getParam("/geo_localization/z_weight", this->data_config_.z_weight);
+  this->public_node_handle_.getParam("/geo_localization/type", this->data_config_.type);
+  this->public_node_handle_.getParam("/geo_localization/lambda", this->data_config_.lambda);
+  this->public_node_handle_.getParam("/geo_localization/k", this->data_config_.k);
+  this->public_node_handle_.getParam("/geo_localization/m", this->data_config_.m);
 
   this->public_node_handle_.getParam("/geo_localization/window_size", this->optimization_config_.window_size);
   this->public_node_handle_.getParam("/geo_localization/max_num_iterations_op", this->optimization_config_.max_num_iterations_op);
@@ -296,8 +300,8 @@ void GeoLocalizationAlgNode::gnss_callback(const nav_msgs::Odometry::ConstPtr& m
   this->gpscorrected_publisher_.publish(gps_corr);
 
   //// DEBUG
-  std::cout << "x_error: " << this->optimization_->getPriorError().x() << std::endl;
-  std::cout << "y_error: " << this->optimization_->getPriorError().y() << std::endl;
+  //std::cout << "x_error: " << this->optimization_->getPriorError().x() << std::endl;
+  //std::cout << "y_error: " << this->optimization_->getPriorError().y() << std::endl;
 
   this->alg_.unlock();
 }
@@ -363,10 +367,11 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   data_processing::AssociationsVector associations;
   this->data_->dataAssociationIcp("os_sensor", tf, associations);
   this->data_->parseAssociationsToPcl("map", associations);
+  this->asso_weight_ = this->data_->dataInformation();
   this->corregist_publisher_.publish(*this->data_->getAssociatedPcl());
 
   //// 4) DA: Generate associations TF constraint
-  std::cout << "ASSO WEIGHT: " << this->asso_weight_ << std::endl;
+  std::cout << "DATA INFORMATION: " << this->asso_weight_ << std::endl;
   bool key_frame = this->count_ > this->margin_asso_constraints_;
   if (key_frame){
     optimization_process::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;
@@ -377,7 +382,7 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
       constraints_asso_pt.landmark = associations.at(i).first;
       constraints_asso_pt.detection = associations.at(i).second;
 
-      constraints_asso_pt.asso_weight = this->asso_weight_ / 100.0;
+      constraints_asso_pt.asso_weight = this->asso_weight_;
       
       constraints_asso_pt.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
       constraints_asso_pt.information = constraints_asso_pt.covariance.inverse();
@@ -506,7 +511,7 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
     for (int j = 0; j < this->map_.at(i).size(); j++){
       marker.pose.position.x = this->map_.at(i).at(j).x;
       marker.pose.position.y = this->map_.at(i).at(j).y;
-      marker.pose.position.z = this->map_.at(i).at(j).z;
+      marker.pose.position.z = 0.0; //this->map_.at(i).at(j).z;
       marker.pose.orientation.x = 0.0;
       marker.pose.orientation.y = 0.0;
       marker.pose.orientation.z = 0.0;
