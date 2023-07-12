@@ -67,6 +67,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     int margin_asso_constraints_;
     int margin_gnss_constraints_;
     double asso_weight_;
+    double odom_weight_;
     float margin_gnss_distance_;
     bool flag_gps_corr_;
     std::string frame_id_;

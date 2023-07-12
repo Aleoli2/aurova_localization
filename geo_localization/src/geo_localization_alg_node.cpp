@@ -18,6 +18,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->public_node_handle_.getParam("/geo_localization/lambda", this->data_config_.lambda);
   this->public_node_handle_.getParam("/geo_localization/k", this->data_config_.k);
   this->public_node_handle_.getParam("/geo_localization/m", this->data_config_.m);
+  this->public_node_handle_.getParam("/geo_localization/odom_preweight", this->data_config_.odom_preweight);
 
   this->public_node_handle_.getParam("/geo_localization/window_size", this->optimization_config_.window_size);
   this->public_node_handle_.getParam("/geo_localization/max_num_iterations_op", this->optimization_config_.max_num_iterations_op);
@@ -37,7 +38,8 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   
   this->count_ = 0;
   this->flag_gps_corr_ = false;
-  this->asso_weight_ = 100.0;
+  this->asso_weight_ = 1.0;
+  this->odom_weight_ = 100.0;
 
   //// Generate transform between map and utm (lat/long zero requiered).
   this->fromUtmTransform();
@@ -143,8 +145,11 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     //// 2) ODOM: Generate odometry constraint
     optimization_process::OdometryConstraint constraint_odom;
+    float N = this->data_config_.odom_preweight + (float)this->data_->getAssociatedPcl()->points.size();
+    this->odom_weight_ = (N + 1) * (2 - this->data_->dataInformation());
     constraint_odom.id_begin = msg_prev.header.seq;
     constraint_odom.id_end = id;
+    constraint_odom.odom_weight = this->odom_weight_;
     constraint_odom.tf_q = q_a.conjugate() * q_b;
     constraint_odom.tf_p = q_a.conjugate() * (p_b - p_a);
     constraint_odom.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance;
