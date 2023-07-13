@@ -145,7 +145,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     //// 2) ODOM: Generate odometry constraint
     optimization_process::OdometryConstraint constraint_odom;
-    float N = this->data_config_.odom_preweight + (float)this->data_->getAssociatedPcl()->points.size();
+    float N = this->data_config_.odom_preweight + (float)this->data_->getAssociatedLmPcl()->points.size();
     this->odom_weight_ = (N + 1) * (2 - this->data_->dataInformation());
     constraint_odom.id_begin = msg_prev.header.seq;
     constraint_odom.id_end = id;
@@ -364,16 +364,17 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
 
   // Parse interface detections to PCL and plot it.
   this->data_->parseDetectionsToPcl("os_sensor");
-  this->detection_publisher_.publish(*this->data_->getDetectionsPcl());
 
   //// 3) DA: Compute data association
   //// ICP
   Eigen::Matrix4d tf;
   data_processing::AssociationsVector associations;
   this->data_->dataAssociationIcp("os_sensor", tf, associations);
-  this->data_->parseAssociationsToPcl("map", associations);
+  this->data_->parseAssociationsLmToPcl("map", associations);
+  this->data_->parseAssociationsDtToPcl("os_sensor", associations);
   this->asso_weight_ = this->data_->dataInformation();
-  this->corregist_publisher_.publish(*this->data_->getAssociatedPcl());
+  this->corregist_publisher_.publish(*this->data_->getAssociatedLmPcl());
+  this->detection_publisher_.publish(*this->data_->getAssociatedDtPcl());
 
   //// 4) DA: Generate associations TF constraint
   std::cout << "DATA INFORMATION: " << this->asso_weight_ << std::endl;
