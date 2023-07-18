@@ -33,6 +33,10 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->public_node_handle_.getParam("/geo_localization/url_file_out", this->url_file_out_);
   this->public_node_handle_.getParam("/geo_localization/save_data", this->save_data_);
 
+  this->public_node_handle_.getParam("/geo_localization/ground_truth", this->ground_truth_);
+  this->public_node_handle_.getParam("/geo_localization/gt_last_frame", this->gt_last_frame_);
+  this->public_node_handle_.getParam("/geo_localization/gt_key_frames", this->gt_key_frames_);
+
   if(!this->private_node_handle_.getParam("rate", this->config_.rate))
   {
     ROS_WARN("GeoLocalizationAlgNode::GeoLocalizationAlgNode: param 'rate' not found");
@@ -173,6 +177,34 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
         this->computeOptimizationProblem();
         this->count_ = this->count_ + 1;
       } 
+    }
+
+    if (this->ground_truth_){
+      this->optimization_->addPose3dToTrajectoryEstimatedGT (this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1));
+      constraint_odom.odom_weight = 1.0;
+      this->optimization_->addOdometryConstraintGT (constraint_odom);
+
+      if(((int)msg->header.seq == (int)this->gt_key_frames_.at(0)) || 
+         ((int)msg->header.seq == (int)this->gt_key_frames_.at(1)) ||
+         ((int)msg->header.seq == (int)this->gt_key_frames_.at(2)) ||
+         ((int)msg->header.seq == (int)this->gt_key_frames_.at(3)) ||
+         ((int)msg->header.seq == (int)this->gt_key_frames_.at(4)) ||
+         ((int)msg->header.seq == (int)this->gt_key_frames_.at(5)) ||
+         ((int)msg->header.seq == (int)this->gt_key_frames_.at(6)) ||
+         ((int)msg->header.seq == (int)this->gt_key_frames_.at(7)) ||
+         ((int)msg->header.seq == (int)this->gt_key_frames_.at(8)) ||
+         ((int)msg->header.seq == (int)this->gt_key_frames_.at(9)))
+      {
+        optimization_process::PriorConstraint constraint_prior;
+        constraint_prior.id = msg->header.seq;
+        constraint_prior.p = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
+        constraint_prior.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
+        constraint_prior.information = constraint_prior.covariance.inverse();
+
+        this->optimization_->addPriorConstraintGT (constraint_prior);
+      }
+      
+      if (msg->header.seq == (this->gt_last_frame_ - 200)) this->computeOptimizationProblemGT();
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -599,6 +631,55 @@ void GeoLocalizationAlgNode::computeOptimizationProblem (void)
 	//// SOLVE OPTIMIZATION PROBLEM
 	this->optimization_->solveOptimizationProblem(&problem);
 
+  return;
+}
+
+void GeoLocalizationAlgNode::computeOptimizationProblemGT (void)
+{
+	//////////////////////////////////////////////////////////////////////
+	//// RESIDUALS GENERATION
+  std::cout << "GT RESIDUALS GENERATION !!!" << std::endl;
+	size_t index = this->optimization_->getTrajectoryEstimatedGT().size() - 1;
+	ceres::Problem problem;
+	ceres::LocalParameterization* quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
+	ceres::LossFunction* loss_function = new ceres::HuberLoss(0.01); //nullptr;//new ceres::HuberLoss(0.01);
+	if (index > 0) this->optimization_->generateOdomResidualsGT(loss_function, quaternion_local_parameterization, &problem);
+  if (index > 0) this->optimization_->generatePriorResidualsGT(loss_function, quaternion_local_parameterization, &problem);
+
+	//////////////////////////////////////////////////////////////////////
+	//// SOLVE OPTIMIZATION PROBLEM
+  std::cout << "GT SOLVE OPTIMIZATION PROBLEM !!!" << std::endl;
+	this->optimization_->solveOptimizationProblem(&problem);
+
+  //////////////////////////////////////////////////////////////////////
+	//// SAVE DATA FOR EVALUATION
+  std::cout << "GT SAVE DATA FOR EVALUATION !!!" << std::endl;
+  for (int i = 0; i < this->optimization_->getTrajectoryEstimatedGT().size(); i++){
+    std::ostringstream out_path_pos2d;
+    std::ostringstream out_pos2d;
+    std::ofstream file_pos2d;
+
+    float yaw;
+    float x = this->optimization_->getTrajectoryEstimatedGT().at(i).q.x();
+    float y = this->optimization_->getTrajectoryEstimatedGT().at(i).q.y();
+    float z = this->optimization_->getTrajectoryEstimatedGT().at(i).q.z();
+    float w = this->optimization_->getTrajectoryEstimatedGT().at(i).q.w();
+    double siny_cosp = 2 * (w * z + x * y);
+    double cosy_cosp = 1 - 2 * (y * y + z * z);
+    yaw = std::atan2(siny_cosp, cosy_cosp);
+
+    out_path_pos2d << this->url_file_out_ << i << "_pose2d.csv";
+
+    file_pos2d.open(out_path_pos2d.str().c_str(), std::ofstream::trunc);
+    out_pos2d << i << ", " <<
+                 this->optimization_->getTrajectoryEstimatedGT().at(i).p.x() << ", " << 
+                 this->optimization_->getTrajectoryEstimatedGT().at(i).p.y() << ", " << 
+                 yaw << "\n";
+    file_pos2d << out_pos2d.str();
+    file_pos2d.close();
+  }
+  std::cout << "FINISHED GT SAVE DATA FOR EVALUATION !!!" << std::endl;
+  
   return;
 }
 

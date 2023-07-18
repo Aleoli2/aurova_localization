@@ -71,6 +71,9 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     float margin_gnss_distance_;
     bool flag_gps_corr_;
     bool save_data_;
+    bool ground_truth_;
+    int gt_last_frame_;
+    std::vector<double> gt_key_frames_;
     std::string url_file_out_;
     std::string frame_id_;
     pcl::PointCloud<pcl::PointXYZ> last_detect_pcl_;
@@ -177,6 +180,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     void mapToOdomInit(void);
     int parseMapToRosMarker(visualization_msgs::MarkerArray& marker_array);
     void computeOptimizationProblem (void);
+    void computeOptimizationProblemGT (void);
 
     // [diagnostic functions]
     
