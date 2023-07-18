@@ -29,6 +29,10 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->public_node_handle_.getParam("/geo_localization/margin_gnss_constraints", this->margin_gnss_constraints_);
   this->public_node_handle_.getParam("/geo_localization/margin_gnss_distance", this->margin_gnss_distance_);
   this->public_node_handle_.getParam("/geo_localization/frame_id", this->frame_id_);
+
+  this->public_node_handle_.getParam("/geo_localization/url_file_out", this->url_file_out_);
+  this->public_node_handle_.getParam("/geo_localization/save_data", this->save_data_);
+
   if(!this->private_node_handle_.getParam("rate", this->config_.rate))
   {
     ROS_WARN("GeoLocalizationAlgNode::GeoLocalizationAlgNode: param 'rate' not found");
@@ -195,6 +199,16 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->localization_msg_.pose.covariance[35] = this->data_->getRotationVarianceDaEvolution();
 
     this->localization_publisher_.publish(this->localization_msg_);
+
+    // yaw (z-axis rotation)
+    float yaw;
+    float x = this->optimization_->getTrajectoryEstimated().at(size-1).q.x();
+    float y = this->optimization_->getTrajectoryEstimated().at(size-1).q.y();
+    float z = this->optimization_->getTrajectoryEstimated().at(size-1).q.z();
+    float w = this->optimization_->getTrajectoryEstimated().at(size-1).q.w();
+    double siny_cosp = 2 * (w * z + x * y);
+    double cosy_cosp = 1 - 2 * (y * y + z * z);
+    yaw = std::atan2(siny_cosp, cosy_cosp);
     ////////////////////////////////////////////////////////////////////////////////
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -243,6 +257,29 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     this->broadcaster_.sendTransform(this->tf_to_map_);
     ////////////////////////////////////////////////////////////////////////////////
+
+    ////////////////////////////////////////////////////////////////////////////////
+    ///// SAVE DATA
+    std::cout << "SEQ: " << msg->header.seq << std::endl;
+    if (this->save_data_){
+      std::ostringstream out_path_pos2d;
+      std::ostringstream out_pos2d;
+      std::ofstream file_pos2d;
+
+      out_path_pos2d << this->url_file_out_ << msg->header.seq << "_pose2d.csv";
+
+      file_pos2d.open(out_path_pos2d.str().c_str(), std::ofstream::trunc);
+      out_pos2d << msg->header.seq << ", " <<
+                   this->optimization_->getTrajectoryEstimated().at(size-1).p.x() << ", " << 
+                   this->optimization_->getTrajectoryEstimated().at(size-1).p.y() << ", " << 
+                   yaw << ", " <<
+                   this->optimization_->getPriorError().x() << ", " <<
+                   this->optimization_->getPriorError().y() << ", " <<
+                   this->data_->dataInformation() << "\n";
+      file_pos2d << out_pos2d.str();
+      file_pos2d.close();
+    }
+    ////////////////////////////////////////////////////////////////////////////////v
 
   }else{
     exec = true;
@@ -377,7 +414,7 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   this->detection_publisher_.publish(*this->data_->getAssociatedDtPcl());
 
   //// 4) DA: Generate associations TF constraint
-  std::cout << "DATA INFORMATION: " << this->asso_weight_ << std::endl;
+  //std::cout << "DATA INFORMATION: " << this->asso_weight_ << std::endl;
   bool key_frame = this->count_ > this->margin_asso_constraints_;
   if (key_frame){
     optimization_process::AssoPointsConstraintsSingleShot constraints_asso_pt_ss;

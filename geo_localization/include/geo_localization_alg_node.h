@@ -70,6 +70,8 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     double odom_weight_;
     float margin_gnss_distance_;
     bool flag_gps_corr_;
+    bool save_data_;
+    std::string url_file_out_;
     std::string frame_id_;
     pcl::PointCloud<pcl::PointXYZ> last_detect_pcl_;
     data_processing::ConfigParams data_config_;
