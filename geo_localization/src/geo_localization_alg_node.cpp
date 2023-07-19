@@ -30,10 +30,13 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->public_node_handle_.getParam("/geo_localization/margin_gnss_distance", this->margin_gnss_distance_);
   this->public_node_handle_.getParam("/geo_localization/frame_id", this->frame_id_);
 
-  this->public_node_handle_.getParam("/geo_localization/url_file_out", this->url_file_out_);
+  this->public_node_handle_.getParam("/geo_localization/out_data", this->out_data_);
+  this->public_node_handle_.getParam("/geo_localization/out_map", this->out_map_);
   this->public_node_handle_.getParam("/geo_localization/save_data", this->save_data_);
+  this->public_node_handle_.getParam("/geo_localization/save_map", this->save_map_);
 
   this->public_node_handle_.getParam("/geo_localization/ground_truth", this->ground_truth_);
+  this->public_node_handle_.getParam("/geo_localization/out_gt", this->out_gt_);
   this->public_node_handle_.getParam("/geo_localization/gt_last_frame", this->gt_last_frame_);
   this->public_node_handle_.getParam("/geo_localization/gt_key_frames", this->gt_key_frames_);
 
@@ -298,7 +301,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
       std::ostringstream out_pos2d;
       std::ofstream file_pos2d;
 
-      out_path_pos2d << this->url_file_out_ << msg->header.seq << "_pose2d.csv";
+      out_path_pos2d << this->out_data_ << msg->header.seq << "_pose2d.csv";
 
       file_pos2d.open(out_path_pos2d.str().c_str(), std::ofstream::trunc);
       out_pos2d << msg->header.seq << ", " <<
@@ -311,7 +314,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
       file_pos2d << out_pos2d.str();
       file_pos2d.close();
     }
-    ////////////////////////////////////////////////////////////////////////////////v
+    ////////////////////////////////////////////////////////////////////////////////
 
   }else{
     exec = true;
@@ -595,6 +598,24 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
       id++;
       marker_array.markers.push_back(marker);
 
+      ////////////////////////////////////////////////////////////////////////////////
+      ///// SAVE MAP
+      if (this->save_data_){
+        std::ostringstream out_path_map;
+        std::ostringstream out_map;
+        std::ofstream file_map;
+
+        out_path_map << this->out_map_ << id << "_landmark.csv";
+
+        file_map.open(out_path_map.str().c_str(), std::ofstream::trunc);
+        out_map << id << ", " <<
+                   this->map_.at(i).at(j).x << ", " << 
+                   this->map_.at(i).at(j).y << "\n";
+        file_map << out_map.str();
+        file_map.close();
+      }
+      ////////////////////////////////////////////////////////////////////////////////
+
       if (j < this->map_.at(i).size() - 1){
         point_line.x = this->map_.at(i).at(j).x;
         point_line.y = this->map_.at(i).at(j).y;
@@ -668,7 +689,7 @@ void GeoLocalizationAlgNode::computeOptimizationProblemGT (void)
     double cosy_cosp = 1 - 2 * (y * y + z * z);
     yaw = std::atan2(siny_cosp, cosy_cosp);
 
-    out_path_pos2d << this->url_file_out_ << i << "_pose2d.csv";
+    out_path_pos2d << this->out_gt_ << i << "_pose2d.csv";
 
     file_pos2d.open(out_path_pos2d.str().c_str(), std::ofstream::trunc);
     out_pos2d << i << ", " <<

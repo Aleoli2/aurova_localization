@@ -71,10 +71,13 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     float margin_gnss_distance_;
     bool flag_gps_corr_;
     bool save_data_;
+    bool save_map_;
     bool ground_truth_;
     int gt_last_frame_;
     std::vector<double> gt_key_frames_;
-    std::string url_file_out_;
+    std::string out_data_;
+    std::string out_map_;
+    std::string out_gt_;
     std::string frame_id_;
     pcl::PointCloud<pcl::PointXYZ> last_detect_pcl_;
     data_processing::ConfigParams data_config_;
