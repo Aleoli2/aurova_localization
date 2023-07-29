@@ -446,7 +446,8 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   this->data_->parseAssociationsDtToPcl("os_sensor", associations);
   this->asso_weight_ = this->data_->dataInformation();
   this->corregist_publisher_.publish(*this->data_->getAssociatedLmPcl());
-  this->detection_publisher_.publish(*this->data_->getAssociatedDtPcl());
+  //this->detection_publisher_.publish(*this->data_->getAssociatedDtPcl());
+  this->detection_publisher_.publish(*this->data_->getDetectionsPcl());
 
   //// 4) DA: Generate associations TF constraint
   //std::cout << "DATA INFORMATION: " << this->asso_weight_ << std::endl;
@@ -600,7 +601,7 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
 
       ////////////////////////////////////////////////////////////////////////////////
       ///// SAVE MAP
-      if (this->save_data_){
+      if (this->save_map_){
         std::ostringstream out_path_map;
         std::ostringstream out_map;
         std::ofstream file_map;
