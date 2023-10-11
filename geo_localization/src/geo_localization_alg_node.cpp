@@ -28,7 +28,11 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->public_node_handle_.getParam("/geo_localization/margin_asso_constraints", this->margin_asso_constraints_);
   this->public_node_handle_.getParam("/geo_localization/margin_gnss_constraints", this->margin_gnss_constraints_);
   this->public_node_handle_.getParam("/geo_localization/margin_gnss_distance", this->margin_gnss_distance_);
-  this->public_node_handle_.getParam("/geo_localization/frame_id", this->frame_id_);
+  this->public_node_handle_.getParam("/geo_localization/map_id", this->map_id_);
+  this->public_node_handle_.getParam("/geo_localization/odom_id", this->odom_id_);
+  this->public_node_handle_.getParam("/geo_localization/base_id", this->base_id_);
+  this->public_node_handle_.getParam("/geo_localization/world_id", this->world_id_);
+  this->public_node_handle_.getParam("/geo_localization/lidar_id", this->lidar_id_);
 
   this->public_node_handle_.getParam("/geo_localization/out_data", this->out_data_);
   this->public_node_handle_.getParam("/geo_localization/out_map", this->out_map_);
@@ -217,7 +221,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     this->localization_msg_.header.seq = id;
     this->localization_msg_.header.stamp = ros::Time::now();
-    this->localization_msg_.header.frame_id = "map";
+    this->localization_msg_.header.frame_id = this->map_id_;
     this->localization_msg_.child_frame_id = "";
     this->localization_msg_.pose.pose.position.x = this->optimization_->getTrajectoryEstimated().at(size-1).p.x();
     this->localization_msg_.pose.pose.position.y = this->optimization_->getTrajectoryEstimated().at(size-1).p.y();
@@ -249,6 +253,24 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     ////////////////////////////////////////////////////////////////////////////////
     ///// generate MAP -> ODOM transform
     // generate 4x4 transform matrix odom2base
+    tf::StampedTransform tf_odom2base;
+    try
+    {
+      this->listener_.lookupTransform(this->odom_id_, this->base_id_, ros::Time(0), tf_odom2base);
+    }
+    catch (tf::TransformException &ex)
+    {
+      ROS_WARN("[draw_frames] TF exception cb_getGpsOdomMsg:\n%s", ex.what());
+    }
+
+    // generate 4x4 transform matrix odom2base
+    Eigen::Affine3d af_odom2base;
+    tf::transformTFToEigen(tf_odom2base, af_odom2base);
+    Eigen::Matrix4d tr_odom2base;
+    tr_odom2base.setIdentity();
+    tr_odom2base.block<3, 3>(0, 0) = af_odom2base.linear();
+    tr_odom2base.block<3, 1>(0, 3) = af_odom2base.translation();
+    /*
     Eigen::Matrix4d tr_odom2base;
     tr_odom2base.setIdentity();
     Eigen::Quaterniond rot1(msg->pose.pose.orientation.w,
@@ -258,6 +280,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     tr_odom2base.block<3, 3>(0, 0) = rot1.toRotationMatrix();
     tr_odom2base.block<3, 1>(0, 3) = Eigen::Vector3d(msg->pose.pose.position.x, 
                                                      msg->pose.pose.position.y, 0.0);
+    */
 
     // generate 4x4 transform matrix map2base
     Eigen::Matrix4d tr_map2base;
@@ -277,8 +300,8 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     Eigen::Quaterniond quat_final(tr_map2odom.block<3, 3>(0, 0));
 
-    this->tf_to_map_.header.frame_id = "map";
-    this->tf_to_map_.child_frame_id = "odom";
+    this->tf_to_map_.header.frame_id = this->map_id_;
+    this->tf_to_map_.child_frame_id = this->odom_id_;
     this->tf_to_map_.header.seq = this->tf_to_map_.header.seq + 1;
     this->tf_to_map_.header.stamp = ros::Time::now();
 
@@ -405,14 +428,14 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   position.y = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p.y();
   this->data_->createLandmarksFromMap(position);
 
-  // Transform landmarks to base(lidar) frame.
-  data_processing::Tf tf_lidar2map;
-  tf_lidar2map.linear() = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q.toRotationMatrix();
-  tf_lidar2map.translation() = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
-  this->data_->applyTfFromLandmarksToBaseFrame(tf_lidar2map);
+  // Transform landmarks to base frame.
+  data_processing::Tf tf_base2map;
+  tf_base2map.linear() = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).q.toRotationMatrix();
+  tf_base2map.translation() = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
+  this->data_->applyTfFromLandmarksToBaseFrame(tf_base2map);
 
   // Parse interface landmarks to PCL and plot it.
-  this->data_->parseLandmarksToPcl("os_sensor");
+  this->data_->parseLandmarksToPcl(this->base_id_);
   this->landmarks_publisher_.publish(*this->data_->getLandmarksPcl());
 
   //// 2) DA: Generate detections in interface from msg.
@@ -434,16 +457,34 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   detections.push_back(positions_way);
   this->data_->setDetections(detections);
 
+  // Transform detections to base frame.
+  tf::StampedTransform tf_lidar2base;
+  try
+  {
+    this->listener_.lookupTransform(this->lidar_id_, this->base_id_, ros::Time(0), tf_lidar2base);
+  }
+  catch (tf::TransformException &ex)
+  {
+    ROS_WARN("[draw_frames] TF exception cb_getGpsOdomMsg:\n%s", ex.what());
+  }
+  Eigen::Affine3d af_lidar2base;
+  tf::transformTFToEigen(tf_lidar2base, af_lidar2base);
+  data_processing::Tf tr_lidar2base;
+  tr_lidar2base.linear() = af_lidar2base.linear();
+  tr_lidar2base.translation() = af_lidar2base.translation();
+  this->data_->applyTfFromDetectionsToBaseFrame(tr_lidar2base);
+
+
   // Parse interface detections to PCL and plot it.
-  this->data_->parseDetectionsToPcl("os_sensor");
+  this->data_->parseDetectionsToPcl(this->base_id_);
 
   //// 3) DA: Compute data association
   //// ICP
   Eigen::Matrix4d tf;
   data_processing::AssociationsVector associations;
-  this->data_->dataAssociationIcp("os_sensor", tf, associations);
-  this->data_->parseAssociationsLmToPcl("map", associations);
-  this->data_->parseAssociationsDtToPcl("os_sensor", associations);
+  this->data_->dataAssociationIcp(this->base_id_, tf, associations);
+  this->data_->parseAssociationsLmToPcl(this->map_id_, associations);
+  this->data_->parseAssociationsDtToPcl(this->base_id_, associations);
   this->asso_weight_ = this->data_->dataInformation();
   this->corregist_publisher_.publish(*this->data_->getAssociatedLmPcl());
   //this->detection_publisher_.publish(*this->data_->getAssociatedDtPcl());
@@ -510,8 +551,8 @@ void GeoLocalizationAlgNode::fromUtmTransform(void)
   int ref_ellipsoid = 23;
   utm.LLtoUTM(ref_ellipsoid, this->lat_zero_, this->lon_zero_, utm_y, utm_x, utm_zone);
 
-  this->tf_to_utm_.header.frame_id = "utm";
-  this->tf_to_utm_.child_frame_id = this->frame_id_;
+  this->tf_to_utm_.header.frame_id = this->world_id_;
+  this->tf_to_utm_.child_frame_id = this->map_id_;
   this->tf_to_utm_.header.stamp = ros::Time::now();
   this->tf_to_utm_.transform.translation.x = utm_x;
   this->tf_to_utm_.transform.translation.y = utm_y;
@@ -526,8 +567,8 @@ void GeoLocalizationAlgNode::fromUtmTransform(void)
 void GeoLocalizationAlgNode::mapToOdomInit(void)
 {
 
-  this->tf_to_map_.header.frame_id = this->frame_id_;
-  this->tf_to_map_.child_frame_id = "odom";
+  this->tf_to_map_.header.frame_id = this->map_id_;
+  this->tf_to_map_.child_frame_id = this->odom_id_;
   this->tf_to_map_.header.stamp = ros::Time::now();
 
   this->tf_to_map_.transform.translation.x = 0.0;
@@ -545,9 +586,9 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
   visualization_msgs::Marker marker;
   visualization_msgs::Marker marker_line;
 
-  marker.header.frame_id = this->frame_id_;
+  marker.header.frame_id = this->map_id_;
   marker.header.stamp = ros::Time::now();
-  marker_line.header.frame_id = this->frame_id_;
+  marker_line.header.frame_id = this->map_id_;
   marker_line.header.stamp = ros::Time::now();
 
   // Set the namespace and id for this marker.  This serves to create a unique ID

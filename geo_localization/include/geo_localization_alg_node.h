@@ -45,6 +45,8 @@
 #include <pcl/filters/filter.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/kdtree/kdtree_flann.h>
+#include <eigen_conversions/eigen_msg.h>
+#include <tf_conversions/tf_eigen.h>
 #include "geo_localization_alg.h"
 
 // [publisher subscriber headers]
@@ -78,7 +80,11 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     std::string out_data_;
     std::string out_map_;
     std::string out_gt_;
-    std::string frame_id_;
+    std::string world_id_;
+    std::string map_id_;
+    std::string odom_id_;
+    std::string base_id_;
+    std::string lidar_id_;
     pcl::PointCloud<pcl::PointXYZ> last_detect_pcl_;
     data_processing::ConfigParams data_config_;
     data_processing::PolylineMap map_;

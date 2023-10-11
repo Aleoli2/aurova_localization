@@ -13,6 +13,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf
   pcl_ros
   pcl_conversions
+  eigen_conversions tf_conversions
 )
 
 ## System dependencies are found with CMake's conventions
