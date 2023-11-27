@@ -33,6 +33,7 @@
 #include <visualization_msgs/MarkerArray.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <std_msgs/Float64.h>
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "geometry_msgs/PoseStamped.h"
 #include <pcl_ros/point_cloud.h>
@@ -65,11 +66,14 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
   
     double lat_zero_;
     double lon_zero_;
+    float offset_map_x_;
+    float offset_map_y_;
     int count_;
     int margin_asso_constraints_;
     int margin_gnss_constraints_;
     double asso_weight_;
     double odom_weight_;
+    double asso_preweight_;
     float margin_gnss_distance_;
     bool flag_gps_corr_;
     bool save_data_;
@@ -104,6 +108,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     ros::Publisher detection_publisher_;
     ros::Publisher corregist_publisher_;
     ros::Publisher gpscorrected_publisher_;
+    ros::Publisher wa_publisher_;
     nav_msgs::Odometry localization_msg_;
 
     // [subscriber attributes]

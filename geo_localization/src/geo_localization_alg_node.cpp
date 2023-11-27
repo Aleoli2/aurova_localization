@@ -19,12 +19,15 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->public_node_handle_.getParam("/geo_localization/k", this->data_config_.k);
   this->public_node_handle_.getParam("/geo_localization/m", this->data_config_.m);
   this->public_node_handle_.getParam("/geo_localization/odom_preweight", this->data_config_.odom_preweight);
+  this->public_node_handle_.getParam("/geo_localization/asso_preweight", this->asso_preweight_);
 
   this->public_node_handle_.getParam("/geo_localization/window_size", this->optimization_config_.window_size);
   this->public_node_handle_.getParam("/geo_localization/max_num_iterations_op", this->optimization_config_.max_num_iterations_op);
 
   this->public_node_handle_.getParam("/geo_localization/lat_zero", this->lat_zero_);
   this->public_node_handle_.getParam("/geo_localization/lon_zero", this->lon_zero_);
+  this->public_node_handle_.getParam("/geo_localization/offset_map_x", this->offset_map_x_);
+  this->public_node_handle_.getParam("/geo_localization/offset_map_y", this->offset_map_y_);
   this->public_node_handle_.getParam("/geo_localization/margin_asso_constraints", this->margin_asso_constraints_);
   this->public_node_handle_.getParam("/geo_localization/margin_gnss_constraints", this->margin_gnss_constraints_);
   this->public_node_handle_.getParam("/geo_localization/margin_gnss_distance", this->margin_gnss_distance_);
@@ -84,6 +87,7 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->detection_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/detections", 1);
   this->corregist_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/corregistered", 1);
   this->gpscorrected_publisher_ = this->public_node_handle_.advertise <nav_msgs::Odometry> ("/odometry_gps_corrected", 1);
+  this->wa_publisher_ = this->public_node_handle_.advertise <std_msgs::Float64> ("/wa", 1);
   
   // [init subscribers]
   this->odom_subscriber_ = this->public_node_handle_.subscribe("/odom", 1, &GeoLocalizationAlgNode::odom_callback, this);
@@ -480,12 +484,16 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
 
   //// 3) DA: Compute data association
   //// ICP
+  std_msgs::Float64 asso_weight;
   Eigen::Matrix4d tf;
   data_processing::AssociationsVector associations;
   this->data_->dataAssociationIcp(this->base_id_, tf, associations);
   this->data_->parseAssociationsLmToPcl(this->map_id_, associations);
   this->data_->parseAssociationsDtToPcl(this->base_id_, associations);
-  this->asso_weight_ = this->data_->dataInformation();
+  if (this->asso_preweight_ < 0) this->asso_weight_ = this->data_->dataInformation();
+  else this->asso_weight_ = this->asso_preweight_;
+  asso_weight.data = this->asso_weight_;
+  this->wa_publisher_.publish(asso_weight);
   this->corregist_publisher_.publish(*this->data_->getAssociatedLmPcl());
   //this->detection_publisher_.publish(*this->data_->getAssociatedDtPcl());
   this->detection_publisher_.publish(*this->data_->getDetectionsPcl());
@@ -554,8 +562,8 @@ void GeoLocalizationAlgNode::fromUtmTransform(void)
   this->tf_to_utm_.header.frame_id = this->world_id_;
   this->tf_to_utm_.child_frame_id = this->map_id_;
   this->tf_to_utm_.header.stamp = ros::Time::now();
-  this->tf_to_utm_.transform.translation.x = utm_x;
-  this->tf_to_utm_.transform.translation.y = utm_y;
+  this->tf_to_utm_.transform.translation.x = utm_x + this->offset_map_x_;
+  this->tf_to_utm_.transform.translation.y = utm_y + this->offset_map_y_;
   this->tf_to_utm_.transform.translation.z = 0.0;
   this->tf_to_utm_.transform.rotation = tf::createQuaternionMsgFromYaw(0.0/*3.1415 / 2.0*/);
 
