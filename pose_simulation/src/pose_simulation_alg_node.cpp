@@ -81,12 +81,12 @@ void PoseSimulationAlgNode::mainNodeThread(void)
 
 /*  [subscriber callbacks] */
 void PoseSimulationAlgNode::cb_ackermannState(
-    const ackermann_msgs::AckermannDriveStamped::ConstPtr& ackermann_state_msg)
+    const ackermann_msgs::AckermannDrive::ConstPtr& ackermann_state_msg)
 {
   this->alg_.lock();
 
-  this->ackermann_state_.drive.speed = ackermann_state_msg->drive.speed;
-  this->ackermann_state_.drive.steering_angle = ackermann_state_msg->drive.steering_angle;
+  this->ackermann_state_.speed = ackermann_state_msg->speed;
+  this->ackermann_state_.steering_angle = ackermann_state_msg->steering_angle;
 
   // listen transform
   try

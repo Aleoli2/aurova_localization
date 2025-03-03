@@ -53,6 +53,7 @@ class GpsOdomOptimizationAlgNode : public algorithm_base::IriBaseAlgorithm<GpsOd
 
 	bool gps_received_;
 	OptimizationProcessPtr optimization_;
+  std::string frame_gps;
 
     // [publisher attributes]
     tf::TransformBroadcaster tf_broadcaster_;

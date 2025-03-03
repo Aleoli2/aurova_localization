@@ -60,7 +60,7 @@ private:
   geometry_msgs::TransformStamped pose_tf_;
   tf::TransformBroadcaster broadcaster_;
   tf::TransformListener listener_;
-  ackermann_msgs::AckermannDriveStamped ackermann_state_;
+  ackermann_msgs::AckermannDrive ackermann_state_;
   geometry_msgs::PoseWithCovarianceStamped pose_sim_;
 
   // [publisher attributes]
@@ -72,7 +72,7 @@ private:
   /**
    * \brief Callback for read ackermann messages.
    */
-  void cb_ackermannState(const ackermann_msgs::AckermannDriveStamped::ConstPtr& ackermann_state_msg);
+  void cb_ackermannState(const ackermann_msgs::AckermannDrive::ConstPtr& ackermann_state_msg);
 
   // [service attributes]
 

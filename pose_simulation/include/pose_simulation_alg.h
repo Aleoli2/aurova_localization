@@ -26,7 +26,7 @@
 #define _pose_simulation_alg_h_
 
 #include <pose_simulation/PoseSimulationConfig.h>
-#include "ackermann_msgs/AckermannDriveStamped.h"
+#include "ackermann_msgs/AckermannDrive.h"
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
@@ -158,7 +158,7 @@ public:
    * @param pose_current is the localization at the momento of calculations.
    */
   void generateNewPoseMsg2D(tf::StampedTransform pose_current,
-                            ackermann_msgs::AckermannDriveStamped ackermann_state,
+                            ackermann_msgs::AckermannDrive ackermann_state,
                             geometry_msgs::PoseWithCovarianceStamped& pose_sim,
                             geometry_msgs::TransformStamped& pose_tf,
                             struct Covariance st_cobariance, float d_vehicle,

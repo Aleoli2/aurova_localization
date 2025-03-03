@@ -12,6 +12,7 @@ GpsOdomOptimizationAlgNode::GpsOdomOptimizationAlgNode(void) :
   }
   else
 	this->setRate(this->config_.rate);
+  this->public_node_handle_.param("/gps_odom_optimization/frame_gps",this->frame_gps,std::string("gps"));
 
   // [init publishers]
   this->localization_publisher_ = this->public_node_handle_.advertise<nav_msgs::Odometry>("localization", 1);
@@ -97,7 +98,7 @@ void GpsOdomOptimizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPt
   tf::StampedTransform tf_odom2base;
   try
   {
-    this->tf_listener_.lookupTransform("odom", "gps", ros::Time(0), tf_odom2base);
+    this->tf_listener_.lookupTransform("odom", this->frame_gps, ros::Time(0), tf_odom2base);
   }
   catch (tf::TransformException &ex)
   {

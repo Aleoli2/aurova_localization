@@ -22,7 +22,7 @@ void PoseSimulationAlgorithm::config_update(Config& config, uint32_t level)
 
 // PoseSimulationAlgorithm Public API
 void PoseSimulationAlgorithm::generateNewPoseMsg2D(tf::StampedTransform pose_current,
-                                                   ackermann_msgs::AckermannDriveStamped ackermann_state,
+                                                   ackermann_msgs::AckermannDrive ackermann_state,
                                                    geometry_msgs::PoseWithCovarianceStamped& pose_sim,
                                                    geometry_msgs::TransformStamped& pose_tf,
                                                    struct Covariance st_cobariance, float d_vehicle,
@@ -55,8 +55,8 @@ void PoseSimulationAlgorithm::generateNewPoseMsg2D(tf::StampedTransform pose_cur
   matrix.getRPY(r_current, p_current, w_current);
 
   //read information of low-level sensor
-  float lineal_speed = ackermann_state.drive.speed;
-  float steering_radians = ackermann_state.drive.steering_angle * M_PI / 180.0;
+  float lineal_speed = ackermann_state.speed;
+  float steering_radians = ackermann_state.steering_angle * M_PI / 180.0;
 
   // speed and pose calculations
   float angular_speed_yaw = (lineal_speed / d_vehicle) * sin(steering_radians);

@@ -26,7 +26,7 @@ Parameters:
 * ~child_id_tf (default: ""): Child frame name to transform.
 
 **pose_simulation**
-This package contains a node that, as input, reads the topic /desired_ackermann_state of type ackermann_msgs::AckermannDriveStamped and generates a simulated movement into virtual space integrating the Ackermann inputs. As output generates a topic /pose_sim of type geometry_msgs::PoseWithCovarianceStamped.
+This package contains a node that, as input, reads the topic /desired_ackermann_state of type ackermann_msgs::AckermannDrive and generates a simulated movement into virtual space integrating the Ackermann inputs. As output generates a topic /pose_sim of type geometry_msgs::PoseWithCovarianceStamped.
 
 Parameters:
 * ~pose_simulation/frame_id (default: ""): Coordinates frame for vehicle localization (usually "map" or "odom").
