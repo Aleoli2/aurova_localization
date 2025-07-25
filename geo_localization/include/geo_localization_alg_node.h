@@ -1,54 +1,29 @@
-// Copyright (C) 2010-2011 Institut de Robotica i Informatica Industrial, CSIC-UPC.
-// Author 
-// All rights reserved.
-//
-// This file is part of iri-ros-pkg
-// iri-ros-pkg is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
-// 
-// IMPORTANT NOTE: This code has been generated through a script from the 
-// iri_ros_scripts. Please do NOT delete any comments to guarantee the correctness
-// of the scripts. ROS topics can be easly add by using those scripts. Please
-// refer to the IRI wiki page for more information:
-// http://wikiri.upc.es/index.php/Robotics_Lab
-
 #ifndef _geo_localization_alg_node_h_
 #define _geo_localization_alg_node_h_
 
-#include <iri_base_algorithm/iri_base_algorithm.h>
+
 #include <localization/data_processing.h>
 #include <localization/optimization_process.h>
 #include <localization/latlong_utm.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
-#include <nav_msgs/Odometry.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <std_msgs/Float64.h>
-#include "geometry_msgs/PoseWithCovarianceStamped.h"
-#include "geometry_msgs/PoseStamped.h"
-#include <pcl_ros/point_cloud.h>
-#include <tf/transform_broadcaster.h>
-#include <tf/transform_listener.h>
-#include <tf/tf.h>
+#include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <std_msgs/msg/float64.hpp>
+#include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <iostream>
 #include <fstream>
 #include <pcl/registration/icp.h>
 #include <pcl/filters/filter.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/kdtree/kdtree_flann.h>
-#include <eigen_conversions/eigen_msg.h>
-#include <tf_conversions/tf_eigen.h>
-#include "geo_localization_alg.h"
+#include <pcl_conversions/pcl_conversions.h>
+
 
 // [publisher subscriber headers]
 
@@ -60,10 +35,11 @@
  * \brief IRI ROS Specific Algorithm Class
  *
  */
-class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocalizationAlgorithm>
+class GeoLocalizationAlgNode : public rclcpp::Node
 {
   private:
   
+    int seq_;
     double lat_zero_;
     double lon_zero_;
     float offset_map_x_;
@@ -95,30 +71,31 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     data_processing::DataProcessing *data_;
     optimization_process::OptimizationProcess *optimization_;
     optimization_process::ConfigParams optimization_config_;
-    geometry_msgs::TransformStamped tf_to_utm_;
-    geometry_msgs::TransformStamped tf_to_map_;
-    tf::TransformBroadcaster broadcaster_;
-    tf::TransformListener listener_;
-    visualization_msgs::MarkerArray marker_array_;
+    geometry_msgs::msg::TransformStamped tf_to_utm_;
+    geometry_msgs::msg::TransformStamped tf_to_map_;
+		std::shared_ptr<tf2_ros::TransformBroadcaster> broadcaster_{nullptr};
+		std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+		std::shared_ptr<tf2_ros::TransformListener> tf_listener_{nullptr};
+    visualization_msgs::msg::MarkerArray marker_array_;
     
     // [publisher attributes]
-    ros::Publisher marker_pub_;
-    ros::Publisher localization_publisher_;
-    ros::Publisher landmarks_publisher_;
-    ros::Publisher detection_publisher_;
-    ros::Publisher corregist_publisher_;
-    ros::Publisher gpscorrected_publisher_;
-    ros::Publisher wa_publisher_;
-    nav_msgs::Odometry localization_msg_;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr localization_publisher_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr landmarks_publisher_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr detection_publisher_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr corregist_publisher_;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr gpscorrected_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr wa_publisher_;
+    nav_msgs::msg::Odometry localization_msg_;
 
     // [subscriber attributes]
-    ros::Subscriber odom_subscriber_;
-    ros::Subscriber gnss_subscriber_;
-    ros::Subscriber detc_subscriber_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_subscriber_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr gnss_subscriber_;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr detc_subscriber_;
 
-    void odom_callback(const nav_msgs::Odometry::ConstPtr& msg);
-    void gnss_callback(const nav_msgs::Odometry::ConstPtr& msg);
-    void detc_callback(const sensor_msgs::PointCloud2::ConstPtr &msg);
+    void odom_callback(const nav_msgs::msg::Odometry::SharedPtr  msg);
+    void gnss_callback(const nav_msgs::msg::Odometry::SharedPtr  msg);
+    void detc_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
 
     // [service attributes]
 
@@ -128,14 +105,9 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
 
     // [action client attributes]
 
-   /**
-    * \brief config variable
-    *
-    * This variable has all the driver parameters defined in the cfg config file.
-    * Is updated everytime function config_update() is called.
-    */
-    Config config_;
   public:
+    std::shared_ptr<rclcpp::Rate> loop_rate;
+    double rate;
    /**
     * \brief Constructor
     * 
@@ -152,8 +124,7 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     */
     ~GeoLocalizationAlgNode(void);
 
-  protected:
-   /**
+    /**
     * \brief main node thread
     *
     * This is the main thread node function. Code written here will be executed
@@ -167,6 +138,8 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     */
     void mainNodeThread(void);
 
+  protected:
+
    /**
     * \brief dynamic reconfigure server callback
     * 
@@ -174,25 +147,14 @@ class GeoLocalizationAlgNode : public algorithm_base::IriBaseAlgorithm<GeoLocali
     * the dynamic reconfigure. The derivated generic algorithm class must 
     * implement it.
     *
-    * \param config an object with new configuration from all algorithm 
-    *               parameters defined in the config file.
-    * \param level  integer referring the level in which the configuration
-    *               has been changed.
     */
-    void node_config_update(Config &config, uint32_t level);
+    rcl_interfaces::msg::SetParametersResult node_config_update(const std::vector<rclcpp::Parameter> & parameters);
 
-   /**
-    * \brief node add diagnostics
-    *
-    * In this abstract function additional ROS diagnostics applied to the 
-    * specific algorithms may be added.
-    */
-    void addNodeDiagnostics(void);
 
     //// NEW LOCAL FUNCTIONS
     void fromUtmTransform(void);
     void mapToOdomInit(void);
-    int parseMapToRosMarker(visualization_msgs::MarkerArray& marker_array);
+    int parseMapToRosMarker(visualization_msgs::msg::MarkerArray& marker_array);
     void computeOptimizationProblem (void);
     void computeOptimizationProblemGT (void);
 

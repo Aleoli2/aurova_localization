@@ -1,60 +1,59 @@
 #include "geo_localization_alg_node.h"
 
+
 GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
-  algorithm_base::IriBaseAlgorithm<GeoLocalizationAlgorithm>()
+  Node("geo_localization")
 {
-
+  broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
+  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
   //// Init class attributes if necessary
-  this->public_node_handle_.getParam("/geo_localization/url_to_map", this->data_config_.url_to_map);
-  this->public_node_handle_.getParam("/geo_localization/sample_distance", this->data_config_.sample_distance);
-  this->public_node_handle_.getParam("/geo_localization/threshold_asso", this->data_config_.threshold_asso);
-  this->public_node_handle_.getParam("/geo_localization/voxel_asso", this->data_config_.voxel_asso);
-  this->public_node_handle_.getParam("/geo_localization/radious_dt", this->data_config_.radious_dt);
-  this->public_node_handle_.getParam("/geo_localization/radious_lm", this->data_config_.radious_lm);
-  this->public_node_handle_.getParam("/geo_localization/acum_tf_da", this->data_config_.acum_tf_da);
-  this->public_node_handle_.getParam("/geo_localization/acum_tf_varfactor", this->data_config_.acum_tf_varfactor);
-  this->public_node_handle_.getParam("/geo_localization/z_weight", this->data_config_.z_weight);
-  this->public_node_handle_.getParam("/geo_localization/type", this->data_config_.type);
-  this->public_node_handle_.getParam("/geo_localization/lambda", this->data_config_.lambda);
-  this->public_node_handle_.getParam("/geo_localization/k", this->data_config_.k);
-  this->public_node_handle_.getParam("/geo_localization/m", this->data_config_.m);
-  this->public_node_handle_.getParam("/geo_localization/odom_preweight", this->data_config_.odom_preweight);
-  this->public_node_handle_.getParam("/geo_localization/asso_preweight", this->asso_preweight_);
+  this->get_parameter("url_to_map", this->data_config_.url_to_map);
+  this->get_parameter("sample_distance", this->data_config_.sample_distance);
+  this->get_parameter("threshold_asso", this->data_config_.threshold_asso);
+  this->get_parameter("voxel_asso", this->data_config_.voxel_asso);
+  this->get_parameter("radious_dt", this->data_config_.radious_dt);
+  this->get_parameter("radious_lm", this->data_config_.radious_lm);
+  this->get_parameter("acum_tf_da", this->data_config_.acum_tf_da);
+  this->get_parameter("acum_tf_varfactor", this->data_config_.acum_tf_varfactor);
+  this->get_parameter("z_weight", this->data_config_.z_weight);
+  this->get_parameter("type", this->data_config_.type);
+  this->get_parameter("lambda", this->data_config_.lambda);
+  this->get_parameter("k", this->data_config_.k);
+  this->get_parameter("m", this->data_config_.m);
+  this->get_parameter("odom_preweight", this->data_config_.odom_preweight);
+  this->get_parameter("asso_preweight", this->asso_preweight_);
 
-  this->public_node_handle_.getParam("/geo_localization/window_size", this->optimization_config_.window_size);
-  this->public_node_handle_.getParam("/geo_localization/max_num_iterations_op", this->optimization_config_.max_num_iterations_op);
+  this->get_parameter("window_size", this->optimization_config_.window_size);
+  this->get_parameter("max_num_iterations_op", this->optimization_config_.max_num_iterations_op);
 
-  this->public_node_handle_.getParam("/geo_localization/lat_zero", this->lat_zero_);
-  this->public_node_handle_.getParam("/geo_localization/lon_zero", this->lon_zero_);
-  this->public_node_handle_.getParam("/geo_localization/offset_map_x", this->offset_map_x_);
-  this->public_node_handle_.getParam("/geo_localization/offset_map_y", this->offset_map_y_);
-  this->public_node_handle_.getParam("/geo_localization/margin_asso_constraints", this->margin_asso_constraints_);
-  this->public_node_handle_.getParam("/geo_localization/margin_gnss_constraints", this->margin_gnss_constraints_);
-  this->public_node_handle_.getParam("/geo_localization/margin_gnss_distance", this->margin_gnss_distance_);
-  this->public_node_handle_.getParam("/geo_localization/map_id", this->map_id_);
-  this->public_node_handle_.getParam("/geo_localization/odom_id", this->odom_id_);
-  this->public_node_handle_.getParam("/geo_localization/base_id", this->base_id_);
-  this->public_node_handle_.getParam("/geo_localization/world_id", this->world_id_);
-  this->public_node_handle_.getParam("/geo_localization/lidar_id", this->lidar_id_);
+  this->get_parameter("lat_zero", this->lat_zero_);
+  this->get_parameter("lon_zero", this->lon_zero_);
+  this->get_parameter("offset_map_x", this->offset_map_x_);
+  this->get_parameter("offset_map_y", this->offset_map_y_);
+  this->get_parameter("margin_asso_constraints", this->margin_asso_constraints_);
+  this->get_parameter("margin_gnss_constraints", this->margin_gnss_constraints_);
+  this->get_parameter("margin_gnss_distance", this->margin_gnss_distance_);
+  this->get_parameter("map_id", this->map_id_);
+  this->get_parameter("odom_id", this->odom_id_);
+  this->get_parameter("base_id", this->base_id_);
+  this->get_parameter("world_id", this->world_id_);
+  this->get_parameter("lidar_id", this->lidar_id_);
 
-  this->public_node_handle_.getParam("/geo_localization/out_data", this->out_data_);
-  this->public_node_handle_.getParam("/geo_localization/out_map", this->out_map_);
-  this->public_node_handle_.getParam("/geo_localization/save_data", this->save_data_);
-  this->public_node_handle_.getParam("/geo_localization/save_map", this->save_map_);
+  this->get_parameter("out_data", this->out_data_);
+  this->get_parameter("out_map", this->out_map_);
+  this->get_parameter("save_data", this->save_data_);
+  this->get_parameter("save_map", this->save_map_);
 
-  this->public_node_handle_.getParam("/geo_localization/ground_truth", this->ground_truth_);
-  this->public_node_handle_.getParam("/geo_localization/out_gt", this->out_gt_);
-  this->public_node_handle_.getParam("/geo_localization/gt_last_frame", this->gt_last_frame_);
-  this->public_node_handle_.getParam("/geo_localization/gt_key_frames", this->gt_key_frames_);
-
-  if(!this->private_node_handle_.getParam("rate", this->config_.rate))
-  {
-    ROS_WARN("GeoLocalizationAlgNode::GeoLocalizationAlgNode: param 'rate' not found");
-  }
-  else
-    this->setRate(this->config_.rate);
+  this->get_parameter("ground_truth", this->ground_truth_);
+  this->get_parameter("out_gt", this->out_gt_);
+  this->get_parameter("gt_last_frame", this->gt_last_frame_);
+  this->get_parameter("gt_key_frames", this->gt_key_frames_);
   
+  auto parameter_callback = this->add_on_set_parameters_callback(std::bind(&GeoLocalizationAlgNode::node_config_update, this, std::placeholders::_1));
+
   this->count_ = 0;
+  this->seq_ = 0;
   this->flag_gps_corr_ = false;
   this->asso_weight_ = 1.0;
   this->odom_weight_ = 100.0;
@@ -81,18 +80,18 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   this->parseMapToRosMarker(this->marker_array_);
 
   // [init publishers]
-  this->localization_publisher_ = this->public_node_handle_.advertise<nav_msgs::Odometry>("/localization", 1);
-  this->marker_pub_ = this->public_node_handle_.advertise < visualization_msgs::MarkerArray > ("/map", 1);
-  this->landmarks_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/landmarks", 1);
-  this->detection_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/detections", 1);
-  this->corregist_publisher_ = this->public_node_handle_.advertise<sensor_msgs::PointCloud2>("/corregistered", 1);
-  this->gpscorrected_publisher_ = this->public_node_handle_.advertise <nav_msgs::Odometry> ("/odometry_gps_corrected", 1);
-  this->wa_publisher_ = this->public_node_handle_.advertise <std_msgs::Float64> ("/wa", 1);
+  this->localization_publisher_ = this->create_publisher<nav_msgs::msg::Odometry>("/localization", 1);
+  this->marker_pub_ = this->create_publisher < visualization_msgs::msg::MarkerArray > ("/map", 1);
+  this->landmarks_publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/landmarks", 1);
+  this->detection_publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/detections", 1);
+  this->corregist_publisher_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("/corregistered", 1);
+  this->gpscorrected_publisher_ = this->create_publisher <nav_msgs::msg::Odometry> ("/odometry_gps_corrected", 1);
+  this->wa_publisher_ = this->create_publisher <std_msgs::msg::Float64> ("/wa", 1);
   
   // [init subscribers]
-  this->odom_subscriber_ = this->public_node_handle_.subscribe("/odom", 1, &GeoLocalizationAlgNode::odom_callback, this);
-  this->gnss_subscriber_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &GeoLocalizationAlgNode::gnss_callback, this);
-  this->detc_subscriber_ = this->public_node_handle_.subscribe("/ground_lines_pc", 1, &GeoLocalizationAlgNode::detc_callback, this);
+  this->odom_subscriber_ = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 1, std::bind(&GeoLocalizationAlgNode::odom_callback, this, std::placeholders::_1));
+  this->gnss_subscriber_ = this->create_subscription<nav_msgs::msg::Odometry>("/odometry_gps", 1, std::bind(&GeoLocalizationAlgNode::gnss_callback, this, std::placeholders::_1));
+  this->detc_subscriber_ = this->create_subscription<sensor_msgs::msg::PointCloud2>("/ground_lines_pc", 1, std::bind(&GeoLocalizationAlgNode::detc_callback, this, std::placeholders::_1));
   
   // [init services]
   
@@ -111,7 +110,7 @@ GeoLocalizationAlgNode::~GeoLocalizationAlgNode(void)
 void GeoLocalizationAlgNode::mainNodeThread(void)
 {
   //lock access to algorithm if necessary
-  this->alg_.lock();
+
 
   // [fill msg structures]
   
@@ -120,35 +119,33 @@ void GeoLocalizationAlgNode::mainNodeThread(void)
   // [fill action structure and make request to the action server]
 
   // [publish messages]
-  this->tf_to_utm_.header.seq = this->tf_to_utm_.header.seq + 1;
-  this->tf_to_utm_.header.stamp = ros::Time::now();
-  this->broadcaster_.sendTransform(this->tf_to_utm_);
+  this->tf_to_utm_.header.stamp = this->now();
+  this->broadcaster_->sendTransform(this->tf_to_utm_);
 
-  //this->tf_to_map_.header.seq = this->tf_to_map_.header.seq + 1;
-  //this->tf_to_map_.header.stamp = ros::Time::now();
-  //this->broadcaster_.sendTransform(this->tf_to_map_);
+  //this->tf_to_map_.header.stamp = this->now();
+  //this->broadcaster_->sendTransform(this->tf_to_map_);
 
   //// Publish map only one time.
   static int count = 0;
   if (count == 30){
-    this->marker_pub_.publish(this->marker_array_);
+    this->marker_pub_->publish(this->marker_array_);
   }
   count = count + 1;
   
-  this->alg_.unlock();
+
 }
 
 /*  [subscriber callbacks] */
-void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& msg)
+void GeoLocalizationAlgNode::odom_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
 {
-  //ROS_INFO("GeoLocalizationAlgNode::odom_callback: New Message Received");
-  this->alg_.lock();
+  //RCLCPP_INFO(this->get_logger(),"GeoLocalizationAlgNode::odom_callback: New Message Received");
+
 
   double ini, end;
-  ini = ros::Time::now().toSec();
+  ini = this->now().seconds();
 
   static bool exec = false;
-  static nav_msgs::Odometry msg_prev;
+  static nav_msgs::msg::Odometry msg_prev;
 
   if (exec){ // To avoid firs execution.
 
@@ -158,7 +155,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     Eigen::Quaternion<double> q_a(msg_prev.pose.pose.orientation.w, 0.0, 0.0, msg_prev.pose.pose.orientation.z);
     Eigen::Matrix<double, 3, 1> p_b(msg->pose.pose.position.x, msg->pose.pose.position.y, 0.0);
     Eigen::Quaternion<double> q_b(msg->pose.pose.orientation.w, 0.0, 0.0, msg->pose.pose.orientation.z);
-    int id = msg->header.seq;
+    int id = this->seq_ + 1;
     
     this->optimization_->propagateState (p_a, q_a, p_b, q_b, id);
 
@@ -166,8 +163,8 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     optimization_process::OdometryConstraint constraint_odom;
     float N = this->data_config_.odom_preweight + (float)this->data_->getAssociatedLmPcl()->points.size();
     this->odom_weight_ = (N + 1) * (2 - this->data_->dataInformation());
-    constraint_odom.id_begin = msg_prev.header.seq;
-    constraint_odom.id_end = id;
+    constraint_odom.id_begin = this->seq_;
+    constraint_odom.id_end = this->seq_-1;
     constraint_odom.odom_weight = this->odom_weight_;
     constraint_odom.tf_q = q_a.conjugate() * q_b;
     constraint_odom.tf_p = q_a.conjugate() * (p_b - p_a);
@@ -195,19 +192,19 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
       constraint_odom.odom_weight = 1.0;
       this->optimization_->addOdometryConstraintGT (constraint_odom);
 
-      if(((int)msg->header.seq == (int)this->gt_key_frames_.at(0)) || 
-         ((int)msg->header.seq == (int)this->gt_key_frames_.at(1)) ||
-         ((int)msg->header.seq == (int)this->gt_key_frames_.at(2)) ||
-         ((int)msg->header.seq == (int)this->gt_key_frames_.at(3)) ||
-         ((int)msg->header.seq == (int)this->gt_key_frames_.at(4)) ||
-         ((int)msg->header.seq == (int)this->gt_key_frames_.at(5)) ||
-         ((int)msg->header.seq == (int)this->gt_key_frames_.at(6)) ||
-         ((int)msg->header.seq == (int)this->gt_key_frames_.at(7)) ||
-         ((int)msg->header.seq == (int)this->gt_key_frames_.at(8)) ||
-         ((int)msg->header.seq == (int)this->gt_key_frames_.at(9)))
+      if((this->seq_ == (int)this->gt_key_frames_.at(0)) || 
+         (this->seq_ == (int)this->gt_key_frames_.at(1)) ||
+         (this->seq_ == (int)this->gt_key_frames_.at(2)) ||
+         (this->seq_ == (int)this->gt_key_frames_.at(3)) ||
+         (this->seq_ == (int)this->gt_key_frames_.at(4)) ||
+         (this->seq_ == (int)this->gt_key_frames_.at(5)) ||
+         (this->seq_ == (int)this->gt_key_frames_.at(6)) ||
+         (this->seq_ == (int)this->gt_key_frames_.at(7)) ||
+         (this->seq_ == (int)this->gt_key_frames_.at(8)) ||
+         (this->seq_ == (int)this->gt_key_frames_.at(9)))
       {
         optimization_process::PriorConstraint constraint_prior;
-        constraint_prior.id = msg->header.seq;
+        constraint_prior.id = this->seq_;
         constraint_prior.p = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).p;
         constraint_prior.covariance = this->optimization_->getTrajectoryEstimated().at(this->optimization_->getTrajectoryEstimated().size()-1).covariance.block<3, 3>(0, 0);
         constraint_prior.information = constraint_prior.covariance.inverse();
@@ -215,7 +212,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
         this->optimization_->addPriorConstraintGT (constraint_prior);
       }
       
-      if (msg->header.seq == (this->gt_last_frame_ - 200)) this->computeOptimizationProblemGT();
+      if (this->seq_ == (this->gt_last_frame_ - 200)) this->computeOptimizationProblemGT();
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -223,8 +220,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     // POSE
     int size = this->optimization_->getTrajectoryEstimated().size();
 
-    this->localization_msg_.header.seq = id;
-    this->localization_msg_.header.stamp = ros::Time::now();
+    this->localization_msg_.header.stamp = this->now();
     this->localization_msg_.header.frame_id = this->map_id_;
     this->localization_msg_.child_frame_id = "";
     this->localization_msg_.pose.pose.position.x = this->optimization_->getTrajectoryEstimated().at(size-1).p.x();
@@ -241,7 +237,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->localization_msg_.pose.covariance[14] = 0.1;
     this->localization_msg_.pose.covariance[35] = this->data_->getRotationVarianceDaEvolution();
 
-    this->localization_publisher_.publish(this->localization_msg_);
+    this->localization_publisher_->publish(this->localization_msg_);
 
     // yaw (z-axis rotation)
     float yaw;
@@ -257,19 +253,20 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     ////////////////////////////////////////////////////////////////////////////////
     ///// generate MAP -> ODOM transform
     // generate 4x4 transform matrix odom2base
-    tf::StampedTransform tf_odom2base;
+    geometry_msgs::msg::TransformStamped tf_odom2base;
     try
     {
-      this->listener_.lookupTransform(this->odom_id_, this->base_id_, ros::Time(0), tf_odom2base);
+      tf_odom2base = this->tf_buffer_->lookupTransform(this->odom_id_,  this->base_id_, tf2::TimePointZero);
     }
-    catch (tf::TransformException &ex)
+    catch (tf2::TransformException &ex)
     {
-      ROS_WARN("[draw_frames] TF exception cb_getGpsOdomMsg:\n%s", ex.what());
+      RCLCPP_WARN(this->get_logger(),"[draw_frames] TF exception cb_getGpsOdomMsg:\n%s", ex.what());
     }
 
     // generate 4x4 transform matrix odom2base
     Eigen::Affine3d af_odom2base;
-    tf::transformTFToEigen(tf_odom2base, af_odom2base);
+    af_odom2base = tf2::transformToEigen(tf_odom2base);
+
     Eigen::Matrix4d tr_odom2base;
     tr_odom2base.setIdentity();
     tr_odom2base.block<3, 3>(0, 0) = af_odom2base.linear();
@@ -306,8 +303,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
 
     this->tf_to_map_.header.frame_id = this->map_id_;
     this->tf_to_map_.child_frame_id = this->odom_id_;
-    this->tf_to_map_.header.seq = this->tf_to_map_.header.seq + 1;
-    this->tf_to_map_.header.stamp = ros::Time::now();
+    this->tf_to_map_.header.stamp = this->now();
 
     this->tf_to_map_.transform.translation.x = tr_map2odom(0, 3);
     this->tf_to_map_.transform.translation.y = tr_map2odom(1, 3);
@@ -317,21 +313,21 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
     this->tf_to_map_.transform.rotation.z = quat_final.z();
     this->tf_to_map_.transform.rotation.w = quat_final.w();
 
-    this->broadcaster_.sendTransform(this->tf_to_map_);
+    this->broadcaster_->sendTransform(this->tf_to_map_);
     ////////////////////////////////////////////////////////////////////////////////
 
     ////////////////////////////////////////////////////////////////////////////////
     ///// SAVE DATA
-    std::cout << "SEQ: " << msg->header.seq << std::endl;
+    std::cout << "SEQ: " << this->seq_ << std::endl;
     if (this->save_data_){
       std::ostringstream out_path_pos2d;
       std::ostringstream out_pos2d;
       std::ofstream file_pos2d;
 
-      out_path_pos2d << this->out_data_ << msg->header.seq << "_pose2d.csv";
+      out_path_pos2d << this->out_data_ << this->seq_ << "_pose2d.csv";
 
       file_pos2d.open(out_path_pos2d.str().c_str(), std::ofstream::trunc);
-      out_pos2d << msg->header.seq << ", " <<
+      out_pos2d << this->seq_ << ", " <<
                    this->optimization_->getTrajectoryEstimated().at(size-1).p.x() << ", " << 
                    this->optimization_->getTrajectoryEstimated().at(size-1).p.y() << ", " << 
                    yaw << ", " <<
@@ -355,20 +351,19 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::Odometry::ConstPtr& m
   msg_prev.pose.pose.orientation.y = msg->pose.pose.orientation.y;
   msg_prev.pose.pose.orientation.z = msg->pose.pose.orientation.z;
   msg_prev.pose.pose.orientation.w = msg->pose.pose.orientation.w;
-  msg_prev.header.seq = msg->header.seq;
 
   // loop time
-  end = ros::Time::now().toSec();
+  end = this->now().seconds();
   //std::cout << "ODOMETRY TIME LOOP: " << end - ini << std::endl;
-  //std::cout << "ODOMETRY SEQUENCE: " << msg->header.seq << std::endl;
+  //std::cout << "ODOMETRY SEQUENCE: " << this->seq_ << std::endl;
 
-  this->alg_.unlock();
+
 }
 
-void GeoLocalizationAlgNode::gnss_callback(const nav_msgs::Odometry::ConstPtr& msg)
+void GeoLocalizationAlgNode::gnss_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
 {
-  //ROS_INFO("GeoLocalizationAlgNode::gnss_callback: New Message Received");
-  this->alg_.lock();
+  //RCLCPP_INFO(this->get_logger(),"GeoLocalizationAlgNode::gnss_callback: New Message Received");
+
   
   //// Prevent wrong corrections
   double x_bridge, y_bridge;
@@ -394,29 +389,29 @@ void GeoLocalizationAlgNode::gnss_callback(const nav_msgs::Odometry::ConstPtr& m
   this->optimization_->addPriorConstraint (constraint_prior);
 
   //// 2) PRIOR: Publish corrected GPS.
-  nav_msgs::Odometry gps_corr;
+  nav_msgs::msg::Odometry gps_corr;
   gps_corr.header = msg->header;
   gps_corr.pose = msg->pose;
   gps_corr.pose.pose.position.x = msg->pose.pose.position.x - this->optimization_->getPriorError().x();
   gps_corr.pose.pose.position.y = msg->pose.pose.position.y - this->optimization_->getPriorError().y();
   gps_corr.twist = msg->twist;
   gps_corr.child_frame_id = msg->child_frame_id;
-  this->gpscorrected_publisher_.publish(gps_corr);
+  this->gpscorrected_publisher_->publish(gps_corr);
 
   //// DEBUG
   //std::cout << "x_error: " << this->optimization_->getPriorError().x() << std::endl;
   //std::cout << "y_error: " << this->optimization_->getPriorError().y() << std::endl;
 
-  this->alg_.unlock();
+
 }
 
-void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::ConstPtr &msg)
+void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
 {
-  //ROS_INFO("GeoLocalizationAlgNode::detc_callback: New Message Received");
-  this->alg_.lock();
+  //RCLCPP_INFO(this->get_logger(),"GeoLocalizationAlgNode::detc_callback: New Message Received");
+
 
   double ini, end;
-  ini = ros::Time::now().toSec();
+  ini = this->now().seconds();
 
   pcl::PCLPointCloud2 detect_pcl2;
   this->last_detect_pcl_.clear();
@@ -440,7 +435,9 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
 
   // Parse interface landmarks to PCL and plot it.
   this->data_->parseLandmarksToPcl(this->base_id_);
-  this->landmarks_publisher_.publish(*this->data_->getLandmarksPcl());
+  sensor_msgs::msg::PointCloud2 cloud_msg;
+  pcl::toROSMsg(*this->data_->getLandmarksPcl(), cloud_msg);
+  this->landmarks_publisher_->publish(cloud_msg);
 
   //// 2) DA: Generate detections in interface from msg.
   data_processing::PolylineMap detections;
@@ -462,17 +459,18 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   this->data_->setDetections(detections);
 
   // Transform detections to base frame.
-  tf::StampedTransform tf_lidar2base;
+  geometry_msgs::msg::TransformStamped tf_lidar2base;
   try
   {
-    this->listener_.lookupTransform(this->lidar_id_, this->base_id_, ros::Time(0), tf_lidar2base);
+    tf_lidar2base = this->tf_buffer_->lookupTransform(this->lidar_id_,  this->base_id_, tf2::TimePointZero);
   }
-  catch (tf::TransformException &ex)
+  catch (tf2::TransformException &ex)
   {
-    ROS_WARN("[draw_frames] TF exception cb_getGpsOdomMsg:\n%s", ex.what());
+    RCLCPP_WARN(this->get_logger(),"[draw_frames] TF exception cb_getGpsOdomMsg:\n%s", ex.what());
   }
   Eigen::Affine3d af_lidar2base;
-  tf::transformTFToEigen(tf_lidar2base, af_lidar2base);
+  af_lidar2base = tf2::transformToEigen(tf_lidar2base);
+
   data_processing::Tf tr_lidar2base;
   tr_lidar2base.linear() = af_lidar2base.linear();
   tr_lidar2base.translation() = af_lidar2base.translation();
@@ -484,7 +482,7 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
 
   //// 3) DA: Compute data association
   //// ICP
-  std_msgs::Float64 asso_weight;
+  std_msgs::msg::Float64 asso_weight;
   Eigen::Matrix4d tf;
   data_processing::AssociationsVector associations;
   this->data_->dataAssociationIcp(this->base_id_, tf, associations);
@@ -493,10 +491,12 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   if (this->asso_preweight_ < 0) this->asso_weight_ = this->data_->dataInformation();
   else this->asso_weight_ = this->asso_preweight_;
   asso_weight.data = this->asso_weight_;
-  this->wa_publisher_.publish(asso_weight);
-  this->corregist_publisher_.publish(*this->data_->getAssociatedLmPcl());
-  //this->detection_publisher_.publish(*this->data_->getAssociatedDtPcl());
-  this->detection_publisher_.publish(*this->data_->getDetectionsPcl());
+  this->wa_publisher_->publish(asso_weight);
+  pcl::toROSMsg(*this->data_->getAssociatedLmPcl(), cloud_msg);
+  this->corregist_publisher_->publish(cloud_msg);
+  //this->detection_publisher_->publish(*this->data_->getAssociatedDtPcl());
+  pcl::toROSMsg(*this->data_->getDetectionsPcl(), cloud_msg);
+  this->detection_publisher_->publish(cloud_msg);
 
   //// 4) DA: Generate associations TF constraint
   //std::cout << "DATA INFORMATION: " << this->asso_weight_ << std::endl;
@@ -523,11 +523,11 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
   }
 
   // loop time
-  end = ros::Time::now().toSec();
+  end = this->now().seconds();
   //std::cout << "DATA TIME LOOP: " << end - ini << std::endl;
-  //std::cout << "DATA SEQUENCE: " << msg->header.seq << std::endl;
+  //std::cout << "DATA SEQUENCE: " << this->seq_ << std::endl;
 
-  this->alg_.unlock();
+
 }
 
 /*  [service callbacks] */
@@ -536,19 +536,32 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::PointCloud2::Const
 
 /*  [action requests] */
 
-void GeoLocalizationAlgNode::node_config_update(Config &config, uint32_t level)
+rcl_interfaces::msg::SetParametersResult GeoLocalizationAlgNode::node_config_update(const std::vector<rclcpp::Parameter> &parameters)
 {
-  this->alg_.lock();
-  if(config.rate!=this->getRate())
-    this->setRate(config.rate);
-  this->config_=config;
-  this->asso_weight_ = config.asso_weight;
-  this->alg_.unlock();
+  double rate;
+  this->get_parameter("rate", rate);
+  if(rate!=this->rate)
+  {
+    this->rate = rate;
+    this->loop_rate = std::make_shared<rclcpp::Rate>(this->rate);
+  }
+  this->get_parameter("sample_distance", this->data_config_.sample_distance);
+  this->get_parameter("threshold_asso", this->data_config_.threshold_asso);
+  this->get_parameter("voxel_asso", this->data_config_.voxel_asso);
+  this->get_parameter("radious_dt", this->data_config_.radious_dt);
+  this->get_parameter("radious_lm", this->data_config_.radious_lm);
+  this->get_parameter("acum_tf_da", this->data_config_.acum_tf_da);
+  this->get_parameter("acum_tf_varfactor", this->data_config_.acum_tf_varfactor);
+  this->get_parameter("z_weight", this->data_config_.z_weight);
+  this->get_parameter("type", this->data_config_.type);
+  this->get_parameter("lambda", this->data_config_.lambda);
+  this->get_parameter("k", this->data_config_.k);
+  this->get_parameter("m", this->data_config_.m);
+  this->get_parameter("odom_preweight", this->data_config_.odom_preweight);
+  this->get_parameter("asso_preweight", this->asso_preweight_);
+
 }
 
-void GeoLocalizationAlgNode::addNodeDiagnostics(void)
-{
-}
 
 void GeoLocalizationAlgNode::fromUtmTransform(void)
 {
@@ -561,13 +574,15 @@ void GeoLocalizationAlgNode::fromUtmTransform(void)
 
   this->tf_to_utm_.header.frame_id = this->world_id_;
   this->tf_to_utm_.child_frame_id = this->map_id_;
-  this->tf_to_utm_.header.stamp = ros::Time::now();
+  this->tf_to_utm_.header.stamp = this->now();
   this->tf_to_utm_.transform.translation.x = utm_x + this->offset_map_x_;
   this->tf_to_utm_.transform.translation.y = utm_y + this->offset_map_y_;
   this->tf_to_utm_.transform.translation.z = 0.0;
-  this->tf_to_utm_.transform.rotation = tf::createQuaternionMsgFromYaw(0.0/*3.1415 / 2.0*/);
+  tf2::Quaternion q;
+  q.setRPY(0, 0, 0.0/*3.1415 / 2.0*/); 
+  this->tf_to_utm_.transform.rotation = tf2::toMsg(q);
 
-  this->broadcaster_.sendTransform(this->tf_to_utm_);
+  this->broadcaster_->sendTransform(this->tf_to_utm_);
 
   return;
 }
@@ -577,27 +592,29 @@ void GeoLocalizationAlgNode::mapToOdomInit(void)
 
   this->tf_to_map_.header.frame_id = this->map_id_;
   this->tf_to_map_.child_frame_id = this->odom_id_;
-  this->tf_to_map_.header.stamp = ros::Time::now();
+  this->tf_to_map_.header.stamp = this->now();
 
   this->tf_to_map_.transform.translation.x = 0.0;
   this->tf_to_map_.transform.translation.y = 0.0;
   this->tf_to_map_.transform.translation.z = 0.0;
-  this->tf_to_map_.transform.rotation = tf::createQuaternionMsgFromYaw(0.0);
+  tf2::Quaternion q;
+  q.setRPY(0, 0, 0.0); 
+  this->tf_to_utm_.transform.rotation = tf2::toMsg(q);
 
-  this->broadcaster_.sendTransform(this->tf_to_map_);
+  this->broadcaster_->sendTransform(this->tf_to_map_);
 
   return;
 }
 
-int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray& marker_array)
+int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::msg::MarkerArray& marker_array)
 {
-  visualization_msgs::Marker marker;
-  visualization_msgs::Marker marker_line;
+  visualization_msgs::msg::Marker marker;
+  visualization_msgs::msg::Marker marker_line;
 
   marker.header.frame_id = this->map_id_;
-  marker.header.stamp = ros::Time::now();
+  marker.header.stamp = this->now();
   marker_line.header.frame_id = this->map_id_;
-  marker_line.header.stamp = ros::Time::now();
+  marker_line.header.stamp = this->now();
 
   // Set the namespace and id for this marker.  This serves to create a unique ID
   // Any marker sent with the same namespace and id will overwrite the old one
@@ -605,12 +622,12 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
   marker_line.ns = "links";
 
   // Set the marker type.  Initially this is CUBE, and cycles between that and SPHERE, ARROW, and CYLINDER
-  marker.type = visualization_msgs::Marker::SPHERE;
-  marker_line.type = visualization_msgs::Marker::LINE_LIST;
+  marker.type = visualization_msgs::msg::Marker::SPHERE;
+  marker_line.type = visualization_msgs::msg::Marker::LINE_LIST;
 
   // Set the marker action.  Options are ADD, DELETE, and new in ROS Indigo: 3 (DELETEALL)
-  marker.action = visualization_msgs::Marker::ADD;
-  marker_line.action = visualization_msgs::Marker::ADD;
+  marker.action = visualization_msgs::msg::Marker::ADD;
+  marker_line.action = visualization_msgs::msg::Marker::ADD;
 
   // Set the scale of the marker -- 1x1x1 here means 1m on a side
   marker.scale.x = 0.4;
@@ -628,11 +645,11 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::MarkerArray&
   marker_line.color.b = 1.0f;
   marker_line.color.a = 1.0;
 
-  marker.lifetime = ros::Duration();
-  marker_line.lifetime = ros::Duration();
+  marker.lifetime = rclcpp::Duration(0);
+  marker_line.lifetime = rclcpp::Duration(0);
 
   // Set the pose of the marker.  This is a full 6DOF pose relative to the frame/time specified in the header
-  geometry_msgs::Point point_line;
+  geometry_msgs::msg::Point point_line;
   int id = 0;
   for (int i = 0; i < this->map_.size(); i++){
     marker_line.points.clear();
@@ -757,5 +774,17 @@ void GeoLocalizationAlgNode::computeOptimizationProblemGT (void)
 /* main function */
 int main(int argc,char *argv[])
 {
-  return algorithm_base::main<GeoLocalizationAlgNode>(argc, argv, "geo_localization_alg_node");
+	rclcpp::init(argc, argv);
+	auto node = std::make_shared<GeoLocalizationAlgNode>();
+	node->rate = node->declare_parameter<double>("rate", 10.0);
+  node->loop_rate = std::make_shared<rclcpp::Rate>(node->rate);
+
+	while (rclcpp::ok()) {
+		node->mainNodeThread();
+		rclcpp::spin_some(node);
+		node->loop_rate->sleep();
+	}
+	rclcpp::shutdown();
+	return 0;
 }
+

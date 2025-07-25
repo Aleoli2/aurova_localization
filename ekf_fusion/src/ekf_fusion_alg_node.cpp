@@ -1,34 +1,36 @@
 #include "ekf_fusion_alg_node.h"
 
-EkfFusionAlgNode::EkfFusionAlgNode(void) :
-    algorithm_base::IriBaseAlgorithm<EkfFusionAlgorithm>()
-{
+using std::placeholders::_1;
 
+EkfFusionAlgNode::EkfFusionAlgNode(void) :
+    Node("ekf_fusion")
+{
+  broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(this);
+  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
   //init class attributes if necessary
-  //this->loop_rate_ = 10; //in [Hz]
   this->flag_plot_pose_ = false;
-  this->public_node_handle_.getParam("/ekf_fusion/frame_id", this->frame_id_);
-  this->public_node_handle_.getParam("/ekf_fusion/child_id", this->child_id_);
-  this->public_node_handle_.getParam("/ekf_fusion/x_model", this->kalman_config_.x_model);
-  this->public_node_handle_.getParam("/ekf_fusion/y_model", this->kalman_config_.y_model);
-  this->public_node_handle_.getParam("/ekf_fusion/theta_model", this->kalman_config_.theta_model);
-  this->public_node_handle_.getParam("/ekf_fusion/outlier_mahalanobis",
+  this->get_parameter("frame_id", this->frame_id_);
+  this->get_parameter("child_id", this->child_id_);
+  this->get_parameter("x_model", this->kalman_config_.x_model);
+  this->get_parameter("y_model", this->kalman_config_.y_model);
+  this->get_parameter("theta_model", this->kalman_config_.theta_model);
+  this->get_parameter("outlier_mahalanobis",
                                      this->kalman_config_.outlier_mahalanobis_threshold);
-  this->public_node_handle_.getParam("/ekf_fusion/min_speed", this->min_speed_);
-  this->public_node_handle_.getParam("/ekf_fusion/is_simulation", this->is_simulation_);
+  this->get_parameter("min_speed", this->min_speed_);
+  this->get_parameter("is_simulation", this->is_simulation_);
+
+  auto parameter_callback = this->add_on_set_parameters_callback(std::bind(&EkfFusionAlgNode::node_config_update, this, _1));
 
   this->ekf_ = new CEkf(this->kalman_config_);
 
   // [init publishers]
-  this->plot_pose_pub_ = this->public_node_handle_.advertise < geometry_msgs::PoseWithCovarianceStamped
-      > ("/pose_plot", 1);
+  this->plot_pose_pub_ = this->create_publisher< geometry_msgs::msg::PoseWithCovarianceStamped> ("/pose_plot", 1);
 
   // [init subscribers]
-  this->init_pose_sub_ = this->public_node_handle_.subscribe("/initialpose", 1, &EkfFusionAlgNode::cb_getInitPoseMsg,
-                                                             this);
-  this->odom_gps_sub_ = this->public_node_handle_.subscribe("/odometry_gps", 1, &EkfFusionAlgNode::cb_getGpsOdomMsg,
-                                                            this);
-  this->odom_raw_sub_ = this->public_node_handle_.subscribe("/odom", 1, &EkfFusionAlgNode::cb_getRawOdomMsg, this);
+  this->init_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>("/initialpose", 1, std::bind(&EkfFusionAlgNode::cb_getInitPoseMsg,this, _1));
+  this->odom_gps_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("/odometry_gps", 1, std::bind(&EkfFusionAlgNode::cb_getGpsOdomMsg, this, _1));
+  this->odom_raw_sub_ = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 1, std::bind(&EkfFusionAlgNode::cb_getRawOdomMsg, this, _1));
 
   // [init services]
 
@@ -55,22 +57,20 @@ void EkfFusionAlgNode::mainNodeThread(void)
   // [publish messages]
   if (this->flag_plot_pose_)
   {
-    this->plot_pose_pub_.publish(this->plot_pose_);
+    this->plot_pose_pub_->publish(this->plot_pose_);
     this->flag_plot_pose_ = false;
   }
 }
 
 /*  [subscriber callbacks] */
-void EkfFusionAlgNode::cb_getInitPoseMsg(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr &init_msg)
+void EkfFusionAlgNode::cb_getInitPoseMsg(const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr init_msg)
 {
-  this->alg_.lock();
-
   if (this->ekf_->flag_ekf_initialised_)
   {
     //get yaw information
-    tf::Quaternion q(init_msg->pose.pose.orientation.x, init_msg->pose.pose.orientation.y,
+    tf2::Quaternion q(init_msg->pose.pose.orientation.x, init_msg->pose.pose.orientation.y,
                      init_msg->pose.pose.orientation.z, init_msg->pose.pose.orientation.w);
-    tf::Matrix3x3 m(q);
+    tf2::Matrix3x3 m(q);
     double roll, pitch, yaw;
     m.getRPY(roll, pitch, yaw);
 
@@ -85,20 +85,21 @@ void EkfFusionAlgNode::cb_getInitPoseMsg(const geometry_msgs::PoseWithCovariance
 
     ////////////////////////////////////////////////////////////////////////////////
     ///// generate frame -> child transform
-    tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
-    tf::StampedTransform tf_odom2base;
+    tf2::Quaternion quaternion;
+    quaternion.setRPY(0, 0, state(2));
+    geometry_msgs::msg::TransformStamped tf_odom2base;
     try
     {
-      this->listener_.lookupTransform(this->child_id_, "base_link", ros::Time(0), tf_odom2base);
+      tf_odom2base = this->tf_buffer_->lookupTransform(this->child_id_, "base_link", tf2::TimePointZero);
     }
-    catch (tf::TransformException &ex)
+    catch (tf2::TransformException &ex)
     {
-      ROS_WARN("[draw_frames] TF exception cb_getInitPoseMsg:\n%s", ex.what());
+      RCLCPP_WARN(this->get_logger(),"[draw_frames] TF exception cb_getInitPoseMsg:", ex.what());
     }
 
     // generate 4x4 transform matrix odom2base
     Eigen::Affine3d af_odom2base;
-    tf::transformTFToEigen(tf_odom2base, af_odom2base);
+    af_odom2base = tf2::transformToEigen(tf_odom2base);
     Eigen::Matrix4d tr_odom2base;
     tr_odom2base.setIdentity();
     tr_odom2base.block<3, 3>(0, 0) = af_odom2base.linear();
@@ -120,7 +121,7 @@ void EkfFusionAlgNode::cb_getInitPoseMsg(const geometry_msgs::PoseWithCovariance
 
     this->odom_to_map_.header.frame_id = this->frame_id_;
     this->odom_to_map_.child_frame_id = this->child_id_;
-    this->odom_to_map_.header.stamp = ros::Time::now();
+    this->odom_to_map_.header.stamp = this->now();
     this->odom_to_map_.transform.translation.x = tr_map2odom(0, 3);
     this->odom_to_map_.transform.translation.y = tr_map2odom(1, 3);
     this->odom_to_map_.transform.translation.z = tr_map2odom(2, 3);
@@ -129,16 +130,14 @@ void EkfFusionAlgNode::cb_getInitPoseMsg(const geometry_msgs::PoseWithCovariance
     this->odom_to_map_.transform.rotation.z = quat_final.z();
     this->odom_to_map_.transform.rotation.w = quat_final.w();
 
-    this->broadcaster_.sendTransform(this->odom_to_map_);
+    this->broadcaster_->sendTransform(this->odom_to_map_);
     ////////////////////////////////////////////////////////////////////////////////
   }
 
-  this->alg_.unlock();
 }
 
-void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr &odom_msg)
+void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::msg::Odometry::SharedPtr odom_msg)
 {
-  this->alg_.lock();
 
   static int first_exec = true;
 
@@ -152,9 +151,9 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
     ekf::GnssObservation obs;
 
     //get yaw information
-    tf::Quaternion q(odom_msg->pose.pose.orientation.x, odom_msg->pose.pose.orientation.y,
+    tf2::Quaternion q(odom_msg->pose.pose.orientation.x, odom_msg->pose.pose.orientation.y,
                      odom_msg->pose.pose.orientation.z, odom_msg->pose.pose.orientation.w);
-    tf::Matrix3x3 m(q);
+    tf2::Matrix3x3 m(q);
     double roll, pitch, yaw;
     m.getRPY(roll, pitch, yaw);
 
@@ -190,20 +189,21 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
     ////////////////////////////////////////////////////////////////////////////////
     ///// generate frame -> child transform
     this->ekf_->getStateAndCovariance(state, covariance);
-    tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
-    tf::StampedTransform tf_odom2base;
+    tf2::Quaternion quaternion; 
+    quaternion.setRPY(0, 0, state(2));
+    geometry_msgs::msg::TransformStamped tf_odom2base;
     try
     {
-      this->listener_.lookupTransform(this->child_id_, "base_link", ros::Time(0), tf_odom2base);
+      tf_odom2base = this->tf_buffer_->lookupTransform(this->child_id_, "base_link", tf2::TimePointZero);
     }
-    catch (tf::TransformException &ex)
+    catch (tf2::TransformException &ex)
     {
-      ROS_WARN("[draw_frames] TF exception cb_getGpsOdomMsg:\n%s", ex.what());
+      RCLCPP_WARN(this->get_logger(),"[draw_frames] TF exception cb_getInitPoseMsg:", ex.what());
     }
 
     // generate 4x4 transform matrix odom2base
     Eigen::Affine3d af_odom2base;
-    tf::transformTFToEigen(tf_odom2base, af_odom2base);
+    af_odom2base = tf2::transformToEigen(tf_odom2base);
     Eigen::Matrix4d tr_odom2base;
     tr_odom2base.setIdentity();
     tr_odom2base.block<3, 3>(0, 0) = af_odom2base.linear();
@@ -225,7 +225,7 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
 
     this->odom_to_map_.header.frame_id = this->frame_id_;
     this->odom_to_map_.child_frame_id = this->child_id_;
-    this->odom_to_map_.header.stamp = ros::Time::now();
+    this->odom_to_map_.header.stamp = this->now();
     this->odom_to_map_.transform.translation.x = tr_map2odom(0, 3);
     this->odom_to_map_.transform.translation.y = tr_map2odom(1, 3);
     this->odom_to_map_.transform.translation.z = tr_map2odom(2, 3);
@@ -234,7 +234,7 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
     this->odom_to_map_.transform.rotation.z = quat_final.z();
     this->odom_to_map_.transform.rotation.w = quat_final.w();
 
-    this->broadcaster_.sendTransform(this->odom_to_map_);
+    this->broadcaster_->sendTransform(this->odom_to_map_);
     ////////////////////////////////////////////////////////////////////////////////
 
     this->ekf_->flag_ekf_initialised_ = true;
@@ -242,26 +242,24 @@ void EkfFusionAlgNode::cb_getGpsOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
 
   }
 
-  this->alg_.unlock();
 }
 
-void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr &odom_msg)
+void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::msg::Odometry::SharedPtr odom_msg)
 {
-  this->alg_.lock();
 
   if (this->ekf_->flag_ekf_initialised_)
   {
 
-    this->odom_to_map_.header.stamp = ros::Time::now();
-    this->broadcaster_.sendTransform(this->odom_to_map_);
+    this->odom_to_map_.header.stamp = this->now();
+    this->broadcaster_->sendTransform(this->odom_to_map_);
 
     double yaw_frame, x_frame, y_frame;
     double yaw_frame_prev, x_frame_prev, y_frame_prev;
     double roll, pitch, yaw, yaw_use;
     //get yaw information
-    tf::Quaternion q(odom_msg->pose.pose.orientation.x, odom_msg->pose.pose.orientation.y,
+    tf2::Quaternion q(odom_msg->pose.pose.orientation.x, odom_msg->pose.pose.orientation.y,
                      odom_msg->pose.pose.orientation.z, odom_msg->pose.pose.orientation.w);
-    tf::Matrix3x3 m(q);
+    tf2::Matrix3x3 m(q);
     m.getRPY(roll, pitch, yaw);
     yaw_use = yaw;
 
@@ -282,40 +280,40 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
 
     ///////////////////////////////////////////////////////////
     ///// TRANSFORM TO TF FARME
-    geometry_msgs::PointStamped point_frame;
-    geometry_msgs::PointStamped point_child;
+    geometry_msgs::msg::PointStamped point_frame;
+    geometry_msgs::msg::PointStamped point_child;
     point_child.header.frame_id = this->child_id_;
-    point_child.header.stamp = ros::Time(0); //ros::Time::now();
+    point_child.header.stamp = this->now();
     point_child.point.x = odom_msg->pose.pose.position.x;
     point_child.point.y = odom_msg->pose.pose.position.y;
     point_child.point.z = 0.0;
     try
     {
-      this->listener_.transformPoint(this->frame_id_, point_child, point_frame);
+      this->tf_buffer_->transform(point_child, point_frame, this->frame_id_);
     }
-    catch (tf::TransformException &ex)
+    catch (tf2::TransformException &ex)
     {
-      ROS_WARN("[draw_frames] TF exception cb_getRawOdomMsg1:\n%s", ex.what());
+      RCLCPP_WARN(this->get_logger(), "[draw_frames] TF exception cb_getInitPoseMsg:", ex.what());
       return;
     }
     x_frame = point_frame.point.x;
     y_frame = point_frame.point.y;
 
-    geometry_msgs::PointStamped point_frame2;
-    geometry_msgs::PointStamped point_child2;
+    geometry_msgs::msg::PointStamped point_frame2;
+    geometry_msgs::msg::PointStamped point_child2;
     point_child2.header.frame_id = this->child_id_;
-    point_child2.header.stamp = ros::Time(0); //ros::Time::now();
+    point_child2.header.stamp = this->now();
     point_child2.point.x = x_prev;
     point_child2.point.y = y_prev;
     point_child2.point.z = 0.0;
     try
     {
-      this->listener_.transformPoint(this->frame_id_, point_child2, point_frame2);
+      this->tf_buffer_->transform(point_child2, point_frame2, this->frame_id_);
 
     }
-    catch (tf::TransformException &ex)
+    catch (tf2::TransformException &ex)
     {
-      ROS_WARN("[draw_frames] TF exception cb_getRawOdomMsg2:\n%s", ex.what());
+      RCLCPP_WARN(this->get_logger(), "[draw_frames] TF exception cb_getInitPoseMsg: %s", ex.what());
       return;
     }
     x_frame_prev = point_frame2.point.x;
@@ -335,12 +333,13 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
     theta_prev = yaw;
 
     ////////////////////////////////////////////////////////////////////////////////
-    ///// update ros message structure for plot
+    ///// update rclcpp message structure for plot
     Eigen::Matrix<double, 3, 1> state;
     Eigen::Matrix<double, 3, 3> covariance;
     this->ekf_->getStateAndCovariance(state, covariance);
     this->plot_pose_.header.frame_id = this->frame_id_;
-    tf::Quaternion quaternion = tf::createQuaternionFromRPY(0, 0, state(2));
+    tf2::Quaternion quaternion; 
+    quaternion.setRPY(0, 0, state(2));
     this->plot_pose_.pose.pose.position.x = state(0);
     this->plot_pose_.pose.pose.position.y = state(1);
     this->plot_pose_.pose.pose.orientation.x = quaternion[0];
@@ -356,19 +355,19 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
 
     ////////////////////////////////////////////////////////////////////////////////
     ///// generate frame -> child transform
-    tf::StampedTransform tf_odom2base;
+    geometry_msgs::msg::TransformStamped tf_odom2base;
     try
     {
-      this->listener_.lookupTransform(this->child_id_, "base_link", ros::Time(0), tf_odom2base);
+      tf_odom2base = this->tf_buffer_->lookupTransform(this->child_id_, "base_link", tf2::TimePointZero);
     }
-    catch (tf::TransformException &ex)
+    catch (tf2::TransformException &ex)
     {
-      ROS_WARN("[draw_frames] TF exception cb_getRawOdomMsg3:\n%s", ex.what());
+      RCLCPP_WARN(this->get_logger(),"[draw_frames] TF exception cb_getRawOdomMsg3:\n%s", ex.what());
     }
 
     // generate 4x4 transform matrix odom2base
     Eigen::Affine3d af_odom2base;
-    tf::transformTFToEigen(tf_odom2base, af_odom2base);
+    af_odom2base = tf2::transformToEigen(tf_odom2base);
     Eigen::Matrix4d tr_odom2base;
     tr_odom2base.setIdentity();
     tr_odom2base.block<3, 3>(0, 0) = af_odom2base.linear();
@@ -390,7 +389,7 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
 
     this->odom_to_map_.header.frame_id = this->frame_id_;
     this->odom_to_map_.child_frame_id = this->child_id_;
-    this->odom_to_map_.header.stamp = ros::Time::now();
+    this->odom_to_map_.header.stamp = this->now();
     this->odom_to_map_.transform.translation.x = tr_map2odom(0, 3);
     this->odom_to_map_.transform.translation.y = tr_map2odom(1, 3);
     this->odom_to_map_.transform.translation.z = tr_map2odom(2, 3);
@@ -399,12 +398,11 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
     this->odom_to_map_.transform.rotation.z = quat_final.z();
     this->odom_to_map_.transform.rotation.w = quat_final.w();
 
-    this->broadcaster_.sendTransform(this->odom_to_map_);
+    this->broadcaster_->sendTransform(this->odom_to_map_);
     ////////////////////////////////////////////////////////////////////////////////
 
   }
 
-  this->alg_.unlock();
 }
 
 /*  [service callbacks] */
@@ -413,19 +411,30 @@ void EkfFusionAlgNode::cb_getRawOdomMsg(const nav_msgs::Odometry::ConstPtr &odom
 
 /*  [action requests] */
 
-void EkfFusionAlgNode::node_config_update(Config &config, uint32_t level)
+rcl_interfaces::msg::SetParametersResult EkfFusionAlgNode::node_config_update(const std::vector<rclcpp::Parameter> & parameters)
 {
-  this->alg_.lock();
-  this->config_ = config;
-  this->alg_.unlock();
+  rcl_interfaces::msg::SetParametersResult result;
+  this->get_parameter("x_model", this->kalman_config_.x_model);
+  this->get_parameter("y_model", this->kalman_config_.y_model);
+  this->get_parameter("theta_model", this->kalman_config_.theta_model);
+  this->get_parameter("outlier_mahalanobis",
+                                     this->kalman_config_.outlier_mahalanobis_threshold);
+  return result;
 }
 
-void EkfFusionAlgNode::addNodeDiagnostics(void)
+int main(int argc, char * argv[])
 {
-}
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<EkfFusionAlgNode>();
+  double rate = node->declare_parameter<double>("rate", 10.0);
+  rclcpp::Rate loop_rate(rate);  // 10 Hz
 
-/* main function */
-int main(int argc, char *argv[])
-{
-  return algorithm_base::main < EkfFusionAlgNode > (argc, argv, "ekf_fusion_alg_node");
+  while (rclcpp::ok()) {
+    node->mainNodeThread();
+    rclcpp::spin_some(node);
+    loop_rate.sleep();
+  }
+
+  rclcpp::shutdown();
+  return 0;
 }

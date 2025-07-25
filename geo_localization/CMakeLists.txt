@@ -1,30 +1,49 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.5)
 project(geo_localization)
 
+
+# Default to C99
+if(NOT CMAKE_C_STANDARD)
+  set(CMAKE_C_STANDARD 99)
+endif()
+
+# Default to C++14
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+####For docker installation only, todo remove this dependencies to local installation
+set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+set(CMAKE_INSTALL_RPATH "/usr/local/lib/localization;/share_libs/")
+#######################################
+
+
 ## Find catkin macros and libraries
-find_package(catkin REQUIRED)
-find_package(localization REQUIRED)
-FIND_PACKAGE(Eigen3 REQUIRED)
-# ******************************************************************** 
-#                 Add catkin additional components here
-# ******************************************************************** 
-find_package(catkin REQUIRED COMPONENTS
-  iri_base_algorithm
-  tf
-  pcl_ros
-  pcl_conversions
-  eigen_conversions tf_conversions
-)
-
-## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
-
-# ******************************************************************** 
-#           Add system and labrobotica dependencies here
-# ******************************************************************** 
-# find_package(<dependency> REQUIRED)
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
 find_package(PCL REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(localization REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(pcl_conversions)
 find_package(Ceres REQUIRED)
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # uncomment the line when a copyright and license is not present in all source files
+  #set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # uncomment the line when this package is not in a git repo
+  #set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
 
 # ******************************************************************** 
 #           Add topic, service and action definition here
@@ -56,36 +75,6 @@ find_package(Ceres REQUIRED)
 #   std_msgs  # Or other packages containing msgs
 # )
 
-# ******************************************************************** 
-#                 Add the dynamic reconfigure file 
-# ******************************************************************** 
-generate_dynamic_reconfigure_options(cfg/GeoLocalization.cfg)
-
-# ******************************************************************** 
-#                 Add run time dependencies here
-# ******************************************************************** 
-catkin_package(
-#  INCLUDE_DIRS 
-#  LIBRARIES 
-# ******************************************************************** 
-#            Add ROS and IRI ROS run time dependencies
-# ******************************************************************** 
-CATKIN_DEPENDS iri_base_algorithm
-               pcl_ros
-               pcl_conversions
-# ******************************************************************** 
-#      Add system and labrobotica run time dependencies here
-# ******************************************************************** 
-#  DEPENDS 
-)
-
-###########
-## Build ##
-###########
-
-# ******************************************************************** 
-#                   Add the include directories 
-# ******************************************************************** 
 include_directories(include)
 include_directories(${catkin_INCLUDE_DIRS})
 INCLUDE_DIRECTORIES(${EIGEN_INCLUDE_DIR})
@@ -93,32 +82,18 @@ include_directories(${PCL_INCLUDE_DIRS})
 include_directories(${CERES_INCLUDE_DIRS}) 
 # include_directories(${<dependency>_INCLUDE_DIRS})
 
-link_directories(
-  include
-  ${PCL_LIBRARY_DIRS}
-  ${CERES_LIBRARY_DIRS}
-)
-
 ## Declare a cpp library
 # add_library(${PROJECT_NAME} <list of source files>)
 
 ## Declare a cpp executable
-add_executable(${PROJECT_NAME} src/geo_localization_alg.cpp src/geo_localization_alg_node.cpp)
+add_executable(${PROJECT_NAME} src/geo_localization_alg_node.cpp)
+target_link_libraries(${PROJECT_NAME} localization ${CERES_LIBRARIES})
+ament_target_dependencies(${PROJECT_NAME} rclcpp localization Eigen tf2 tf2_ros nav_msgs pcl_conversions PCL Ceres visualization_msgs)
 
-# ******************************************************************** 
-#                   Add the libraries
-# ******************************************************************** 
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
-TARGET_LINK_LIBRARIES(${PROJECT_NAME} localization)
-target_link_libraries(${PROJECT_NAME} ${PCL_LIBRARIES})
-target_link_libraries(${PROJECT_NAME} ${CERES_LIBRARIES})
-# target_link_libraries(${PROJECT_NAME} ${<dependency>_LIBRARIES})
+install(TARGETS
+  ${PROJECT_NAME}
+  DESTINATION lib/${PROJECT_NAME}
+)
 
-# ******************************************************************** 
-#               Add message headers dependencies 
-# ******************************************************************** 
-# add_dependencies(${PROJECT_NAME} <msg_package_name>_generate_messages_cpp)
-# ******************************************************************** 
-#               Add dynamic reconfigure dependencies 
-# ******************************************************************** 
-add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS})
+ament_export_dependencies(rclcpp Eigen ackermann_msgs localization)
+ament_package()
