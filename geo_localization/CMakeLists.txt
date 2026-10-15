@@ -27,9 +27,12 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(PCL REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_eigen REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(localization REQUIRED)
+find_package(pcl_conversions REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(pcl_conversions)
 find_package(Ceres REQUIRED)
@@ -76,8 +79,7 @@ endif()
 # )
 
 include_directories(include)
-include_directories(${catkin_INCLUDE_DIRS})
-INCLUDE_DIRECTORIES(${EIGEN_INCLUDE_DIR})
+include_directories(${EIGEN_INCLUDE_DIR})
 include_directories(${PCL_INCLUDE_DIRS})
 include_directories(${CERES_INCLUDE_DIRS}) 
 # include_directories(${<dependency>_INCLUDE_DIRS})
@@ -88,12 +90,12 @@ include_directories(${CERES_INCLUDE_DIRS})
 ## Declare a cpp executable
 add_executable(${PROJECT_NAME} src/geo_localization_alg_node.cpp)
 target_link_libraries(${PROJECT_NAME} localization ${CERES_LIBRARIES})
-ament_target_dependencies(${PROJECT_NAME} rclcpp localization Eigen tf2 tf2_ros nav_msgs pcl_conversions PCL Ceres visualization_msgs)
+ament_target_dependencies(${PROJECT_NAME} rclcpp localization Eigen3 tf2 tf2_ros tf2_eigen tf2_geometry_msgs nav_msgs pcl_conversions PCL pcl_conversions Ceres visualization_msgs)
 
 install(TARGETS
-  ${PROJECT_NAME}
+  ${PROJECT_NAME} 
   DESTINATION lib/${PROJECT_NAME}
 )
 
-ament_export_dependencies(rclcpp Eigen ackermann_msgs localization)
+ament_export_dependencies(rclcpp Eigen3 localization)
 ament_package()

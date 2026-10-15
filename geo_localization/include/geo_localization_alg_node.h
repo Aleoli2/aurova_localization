@@ -12,10 +12,10 @@
 #include <std_msgs/msg/float64.hpp>
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
-#include <tf2_eigen/tf2_eigen.h>
+#include <tf2_eigen/tf2_eigen.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <iostream>
 #include <fstream>
 #include <pcl/registration/icp.h>
@@ -56,7 +56,7 @@ class GeoLocalizationAlgNode : public rclcpp::Node
     bool save_map_;
     bool ground_truth_;
     int gt_last_frame_;
-    std::vector<double> gt_key_frames_;
+    std::vector<long> gt_key_frames_;
     std::string out_data_;
     std::string out_map_;
     std::string out_gt_;

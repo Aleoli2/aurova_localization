@@ -25,6 +25,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(PCL REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_eigen REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(ackermann_msgs REQUIRED)
@@ -88,7 +89,7 @@ include_directories(${EIGEN_INCLUDE_DIRS})
 
 ## Declare a cpp executable
 add_executable(${PROJECT_NAME} src/ekf_fusion_alg_node.cpp src/ekf.cpp)
-ament_target_dependencies(${PROJECT_NAME} rclcpp Eigen ackermann_msgs tf2_geometry_msgs tf2 tf2_ros nav_msgs)
+ament_target_dependencies(${PROJECT_NAME} rclcpp Eigen3 ackermann_msgs tf2_geometry_msgs tf2 tf2_ros tf2_eigen nav_msgs)
 
 
 install(TARGETS
@@ -96,5 +97,5 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-ament_export_dependencies(rclcpp Eigen ackermann_msgs)
+ament_export_dependencies(rclcpp Eigen3 ackermann_msgs)
 ament_package()

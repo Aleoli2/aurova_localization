@@ -8,47 +8,85 @@ GeoLocalizationAlgNode::GeoLocalizationAlgNode(void) :
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
   //// Init class attributes if necessary
+  this->declare_parameter("url_to_map", "/home/ubuntu/ros2_ws/src/applications/app_geo_localization/maps/scientific_park_01.osm");
   this->get_parameter("url_to_map", this->data_config_.url_to_map);
+  this->declare_parameter("sample_distance",0.5);
   this->get_parameter("sample_distance", this->data_config_.sample_distance);
+  this->declare_parameter("threshold_asso",1.0);
   this->get_parameter("threshold_asso", this->data_config_.threshold_asso);
+  this->declare_parameter("voxel_asso",1.5);
   this->get_parameter("voxel_asso", this->data_config_.voxel_asso);
+  this->declare_parameter("radious_dt",15.0);
   this->get_parameter("radious_dt", this->data_config_.radious_dt);
+  this->declare_parameter("radious_lm",22.5);
   this->get_parameter("radious_lm", this->data_config_.radious_lm);
+  this->declare_parameter("acum_tf_da",10);
   this->get_parameter("acum_tf_da", this->data_config_.acum_tf_da);
+  this->declare_parameter("acum_tf_varfactor",2.0);
   this->get_parameter("acum_tf_varfactor", this->data_config_.acum_tf_varfactor);
+  this->declare_parameter("z_weight",1.0);
   this->get_parameter("z_weight", this->data_config_.z_weight);
+  this->declare_parameter("type",1);
   this->get_parameter("type", this->data_config_.type);
+  this->declare_parameter("lambda",10.0);
   this->get_parameter("lambda", this->data_config_.lambda);
+  this->declare_parameter("k",50.0);
   this->get_parameter("k", this->data_config_.k);
+  this->declare_parameter("m",12.0);
   this->get_parameter("m", this->data_config_.m);
+  this->declare_parameter("odom_preweight",60.0);
   this->get_parameter("odom_preweight", this->data_config_.odom_preweight);
+  this->declare_parameter("asso_preweight",-1.0);
   this->get_parameter("asso_preweight", this->asso_preweight_);
 
+  this->declare_parameter("window_size",30);
   this->get_parameter("window_size", this->optimization_config_.window_size);
+  this->declare_parameter("max_num_iterations_op",100);
   this->get_parameter("max_num_iterations_op", this->optimization_config_.max_num_iterations_op);
 
+  this->declare_parameter("lat_zero",0.0);
   this->get_parameter("lat_zero", this->lat_zero_);
+  this->declare_parameter("lon_zero",0.0);
   this->get_parameter("lon_zero", this->lon_zero_);
+  this->declare_parameter("offset_map_x",0.0);
   this->get_parameter("offset_map_x", this->offset_map_x_);
+  this->declare_parameter("offset_map_y",0.0);
   this->get_parameter("offset_map_y", this->offset_map_y_);
+  this->declare_parameter("margin_asso_constraints",20);
   this->get_parameter("margin_asso_constraints", this->margin_asso_constraints_);
+  this->declare_parameter("margin_gnss_constraints",12);
   this->get_parameter("margin_gnss_constraints", this->margin_gnss_constraints_);
+  this->declare_parameter("margin_gnss_distance",1.0);
   this->get_parameter("margin_gnss_distance", this->margin_gnss_distance_);
+  this->declare_parameter("map_id","map");
   this->get_parameter("map_id", this->map_id_);
+  this->declare_parameter("odom_id","odom");
   this->get_parameter("odom_id", this->odom_id_);
+  this->declare_parameter("base_id","gps");
   this->get_parameter("base_id", this->base_id_);
+  this->declare_parameter("world_id","utm");
   this->get_parameter("world_id", this->world_id_);
+  this->declare_parameter("lidar_id","os_sensor");
   this->get_parameter("lidar_id", this->lidar_id_);
 
+  this->declare_parameter("out_data","");
   this->get_parameter("out_data", this->out_data_);
+  this->declare_parameter("out_map","");
   this->get_parameter("out_map", this->out_map_);
+  this->declare_parameter("save_data",false);
   this->get_parameter("save_data", this->save_data_);
+  this->declare_parameter("save_map",false);
   this->get_parameter("save_map", this->save_map_);
 
+  this->declare_parameter("ground_truth",false);
   this->get_parameter("ground_truth", this->ground_truth_);
+  this->declare_parameter("out_gt","");
   this->get_parameter("out_gt", this->out_gt_);
+  this->declare_parameter("gt_last_frame",0);
   this->get_parameter("gt_last_frame", this->gt_last_frame_);
+  this->declare_parameter("gt_key_frames", this->gt_key_frames_);
   this->get_parameter("gt_key_frames", this->gt_key_frames_);
+
   
   auto parameter_callback = this->add_on_set_parameters_callback(std::bind(&GeoLocalizationAlgNode::node_config_update, this, std::placeholders::_1));
 
@@ -127,6 +165,7 @@ void GeoLocalizationAlgNode::mainNodeThread(void)
 
   //// Publish map only one time.
   static int count = 0;
+
   if (count == 30){
     this->marker_pub_->publish(this->marker_array_);
   }
@@ -338,7 +377,7 @@ void GeoLocalizationAlgNode::odom_callback(const nav_msgs::msg::Odometry::Shared
       file_pos2d.close();
     }
     ////////////////////////////////////////////////////////////////////////////////
-
+    this->seq_ = this->seq_ + 1;
   }else{
     exec = true;
   }
@@ -559,6 +598,10 @@ rcl_interfaces::msg::SetParametersResult GeoLocalizationAlgNode::node_config_upd
   this->get_parameter("m", this->data_config_.m);
   this->get_parameter("odom_preweight", this->data_config_.odom_preweight);
   this->get_parameter("asso_preweight", this->asso_preweight_);
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  result.reason = "success";
+  return result;
 
 }
 
@@ -645,8 +688,8 @@ int GeoLocalizationAlgNode::parseMapToRosMarker(visualization_msgs::msg::MarkerA
   marker_line.color.b = 1.0f;
   marker_line.color.a = 1.0;
 
-  marker.lifetime = rclcpp::Duration(0);
-  marker_line.lifetime = rclcpp::Duration(0);
+  marker.lifetime = rclcpp::Duration(0,0);
+  marker_line.lifetime = rclcpp::Duration(0, 0);
 
   // Set the pose of the marker.  This is a full 6DOF pose relative to the frame/time specified in the header
   geometry_msgs::msg::Point point_line;

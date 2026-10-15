@@ -10,15 +10,23 @@ EkfFusionAlgNode::EkfFusionAlgNode(void) :
   tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
   //init class attributes if necessary
   this->flag_plot_pose_ = false;
+  this->declare_parameter("frame_id", "");
   this->get_parameter("frame_id", this->frame_id_);
+  this->declare_parameter("child_id", "");
   this->get_parameter("child_id", this->child_id_);
+  this->declare_parameter("x_model", 0.0);
   this->get_parameter("x_model", this->kalman_config_.x_model);
+  this->declare_parameter("y_model", 0.0);
   this->get_parameter("y_model", this->kalman_config_.y_model);
+  this->declare_parameter("theta_model", 0.0);
   this->get_parameter("theta_model", this->kalman_config_.theta_model);
-  this->get_parameter("outlier_mahalanobis",
-                                     this->kalman_config_.outlier_mahalanobis_threshold);
+  this->declare_parameter("outlier_mahalanobis", 0.0);
+  this->get_parameter("outlier_mahalanobis",this->kalman_config_.outlier_mahalanobis_threshold);
+  this->declare_parameter("min_speed", 0.0);
   this->get_parameter("min_speed", this->min_speed_);
+  this->declare_parameter("is_simulation", false);
   this->get_parameter("is_simulation", this->is_simulation_);
+
 
   auto parameter_callback = this->add_on_set_parameters_callback(std::bind(&EkfFusionAlgNode::node_config_update, this, _1));
 
