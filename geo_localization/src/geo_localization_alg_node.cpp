@@ -556,9 +556,12 @@ void GeoLocalizationAlgNode::detc_callback(const sensor_msgs::msg::PointCloud2::
 
       constraints_asso_pt_ss.push_back(constraints_asso_pt);
     }
-    this->count_ = this->margin_asso_constraints_ + 1;
-    this->optimization_->addAssoPointConstraintsSingleShot (constraints_asso_pt_ss);
-    this->flag_gps_corr_ = true;
+    if (constraints_asso_pt_ss.size() > 0)
+    {
+      this->count_ = this->margin_asso_constraints_ + 1;
+      this->optimization_->addAssoPointConstraintsSingleShot (constraints_asso_pt_ss);
+      this->flag_gps_corr_ = true;
+    }
   }
 
   // loop time
