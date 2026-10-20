@@ -16,9 +16,6 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-####For docker installation only, todo remove this dependencies to local installation
-set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-set(CMAKE_INSTALL_RPATH "/usr/local/lib/localization;/share_libs/")
 #######################################
 
 
@@ -34,7 +31,6 @@ find_package(visualization_msgs REQUIRED)
 find_package(localization REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(pcl_conversions)
 find_package(Ceres REQUIRED)
 
 if(BUILD_TESTING)
